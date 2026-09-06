@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 -D /tmp/headers.txt "$BASE/health" -o /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .access == "gmail-free" and .auth == "service-binding-ok" and .engine == "service-binding-ok" and .usage == "100-per-month" and .rate_limit_per_minute == 10 and .max_results == 10' /tmp/health.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .access == "gmail-free" and .auth == "service-binding-ok" and .engine == "service-binding-ok" and .usage == "unlimited" and .rate_limit_per_minute == 10 and .max_results == 20' /tmp/health.json >/dev/null
           for header in strict-transport-security x-content-type-options referrer-policy permissions-policy content-security-policy cross-origin-opener-policy; do grep -qi "^${header}:" /tmp/headers.txt; done
           grep -Eiq "^content-security-policy: .*frame-ancestors 'none'" /tmp/headers.txt
           grep -qi '^x-request-id:' /tmp/headers.txt
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$BASE/version" -o /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "3.0.0" and .engine == "1.4.0" and .auth == "3.0.0" and .access == "gmail-free" and .usage == "100-per-month" and .rate_limit_per_minute == 10 and .max_results == 10' /tmp/version.json >/dev/null
+          jq -e '.name == "Momentum API" and .version == "3.1.0" and .engine == "1.4.0" and .auth == "3.0.0" and .access == "gmail-free" and .usage == "unlimited" and .rate_limit_per_minute == 10 and .max_results == 20' /tmp/version.json >/dev/null
 
       - name: Verify auth service
         shell: bash
@@ -55,7 +55,7 @@ jobs:
             test "$STATUS" = "401"
             jq -e '.error.code == "UNAUTHORIZED"' /tmp/boundary.json >/dev/null
           done
-          STATUS="$(curl --silent --show-error --output /tmp/query.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE/v1/momentum?limit=11")"
+          STATUS="$(curl --silent --show-error --output /tmp/query.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE/v1/momentum?limit=21")"
           test "$STATUS" = "400"
           jq -e '.error.code == "INVALID_QUERY"' /tmp/query.json >/dev/null
 
@@ -76,12 +76,12 @@ jobs:
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$PAGE" -o /tmp/page.html
           grep -q 'Momentum' /tmp/page.html
           grep -q 'Sign in with Google' /tmp/page.html
-          grep -q 'FREE · 100 / MONTH' /tmp/page.html
-          grep -q '10 repositories per scan' /tmp/page.html
-          grep -q '100 scans / month' /tmp/page.html
+          grep -q 'FREE · UNLIMITED' /tmp/page.html
+          grep -q '20 repositories' /tmp/page.html
+          grep -q 'Unlimited' /tmp/page.html
           ! grep -qi 'Razorpay' /tmp/page.html
-          ! grep -q 'FREE · UNLIMITED' /tmp/page.html
-          ! grep -q '20 repositories per scan' /tmp/page.html
-          ! grep -q 'Unlimited scans' /tmp/page.html
+          ! grep -q 'FREE · 100 / MONTH' /tmp/page.html
+          ! grep -q '100 scans / month' /tmp/page.html
+          ! grep -q '10 repositories per scan' /tmp/page.html
           ! grep -q '../openapi.yaml' /tmp/page.html
           ! grep -q '../README.md' /tmp/page.html
