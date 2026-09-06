@@ -5,8 +5,8 @@ const config = fs.readFileSync('worker/wrangler.jsonc', 'utf8');
 const checklist = fs.readFileSync('docs/ENGINEERING-CHECKLIST.md', 'utf8');
 
 for (const [pattern, description] of [
-  [/user-specific/i, 'user-specific limits marker'],
-  [/per\s+(?:client\s+)?IP/i, 'per-client-IP limits marker'],
+  [/(?:user-specific|customer-specific|customer\/user-specific)/i, 'customer/user-specific limits marker'],
+  [/per[-\s]+(?:client|customer)[-\s]+IP/i, 'per-client-IP limits marker'],
   [/rate\s+limit/i, 'rate-limit marker'],
 ]) {
   if (!pattern.test(checklist)) throw new Error(`Checklist missing rate-limit marker: ${description}`);
