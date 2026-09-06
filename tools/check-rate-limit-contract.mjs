@@ -15,9 +15,9 @@ for (const [pattern, description] of [
 const requiredGatewayPatterns = [
   [/PUBLIC_IP_RATE_LIMIT/, 'public IP limiter binding'],
   [/AUTH_IP_RATE_LIMIT/, 'auth IP limiter binding'],
-  [/\.limit\(\{key:/, 'RateLimit.limit key usage'],
-  [/code:\"RATE_LIMITED\"/, '429 application error code'],
-  [/\},429,\{/, 'HTTP 429 response path'],
+  [/\.limit\(\{\s*key:/, 'RateLimit.limit key usage'],
+  [/code:\s*\"RATE_LIMITED\"/, '429 application error code'],
+  [/\},\s*429,\s*\{/, 'HTTP 429 response path'],
   [/retry-after/i, 'Retry-After guidance'],
   [/cf-connecting-ip/i, 'Cloudflare client IP source'],
 ];
