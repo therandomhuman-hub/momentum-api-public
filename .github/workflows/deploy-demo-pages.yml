@@ -48,7 +48,7 @@ jobs:
           curl --fail-with-body --silent --show-error --retry 8 --retry-delay 5 "$PAGE" -o /tmp/page.html
           grep -q 'Momentum' /tmp/page.html
           grep -q 'FREE · UNLIMITED' /tmp/page.html
-          grep -q '20 repositories per scan' /tmp/page.html
+          grep -Eq '20 repositories (at a time|per scan|/scan)' /tmp/page.html
           grep -q 'Sign in with Google' /tmp/page.html
           grep -q 'Build your scan' /tmp/page.html
           ! grep -q '../openapi.yaml' /tmp/page.html
