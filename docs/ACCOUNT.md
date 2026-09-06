@@ -1,48 +1,46 @@
 # Account & Usage API
 
-The authenticated account endpoint lets a customer inspect the current Free access and API usage without exposing the full API credential.
+The authenticated account endpoint lets a customer inspect the current Free access and usage state without exposing a full API credential.
 
 ## Browser account
 
-Browser users sign in with a verified Gmail account through Google. Every accepted `@gmail.com` address receives the same Free access automatically.
+Browser users sign in with Google. Only verified `@gmail.com` identities are accepted, and every accepted Gmail address receives the same Unlimited Free access.
 
 There is no Pro tier and no paid upgrade path.
 
-The browser session is issued by the authentication Worker and stored hashed in D1.
+Browser sessions are opaque `mk_session_*` tokens. The authentication Worker stores only an HMAC hash in D1.
 
 ## Developer API account
 
-Developer integrations can use an API key with the existing engine account model.
+Developer integrations can use an issued API key:
 
 ```http
 GET /v1/me
-```
-
-Authentication:
-
-```http
 X-API-Key: mk_live_...
 ```
 
 `Authorization: Bearer mk_live_...` is also accepted.
 
-## Example
+The endpoint returns account, rate-limit, maximum-result, and usage telemetry without returning the full API key.
 
-```bash
-curl https://momentum-api-public.manikandanruki2004.workers.dev/v1/me \
-  -H "X-API-Key: mk_live_..."
+## Usage contract
+
+```text
+Monthly usage: unlimited
+Per-customer rate limit: 10 requests/minute
+Maximum results per momentum scan: 20
 ```
 
-The endpoint returns account/usage information and never returns the full API key.
+Usage telemetry remains enabled for operational reporting even though monthly quota enforcement is disabled.
 
 ## Storage
 
-The active Gmail access model uses one dedicated table:
+Verified Gmail identities are tracked in:
 
 ```text
 google_free_accounts(email PRIMARY KEY)
 ```
 
-Operational customer/session/usage records remain in D1 because the engine needs them for quotas, rate limits, and usage tracking.
+Operational customer, session, rate-limit, usage, and repository-intelligence records remain in D1.
 
-Legacy Pro and payment state is retired through forward migrations; historical migration files remain immutable database history.
+Legacy payment schema is retired through forward migrations; historical migration files remain immutable database history.
