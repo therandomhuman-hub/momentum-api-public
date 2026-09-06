@@ -126,12 +126,20 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MOMENTUM_GITHUB_TOKEN: ${{ secrets.MOMENTUM_GITHUB_TOKEN }}
           MOMENTUM_API_KEY_PEPPER: ${{ secrets.MOMENTUM_API_KEY_PEPPER }}
+          MOMENTUM_ADMIN_SECRET: ${{ secrets.MOMENTUM_ADMIN_SECRET }}
+          MOMENTUM_ENGINE_SHARED_SECRET: ${{ secrets.MOMENTUM_ENGINE_SHARED_SECRET }}
         working-directory: _private-engine/worker
         shell: bash
         run: |
           set -euo pipefail
+          test -n "$MOMENTUM_GITHUB_TOKEN"
+          test -n "$MOMENTUM_API_KEY_PEPPER"
+          test -n "$MOMENTUM_ADMIN_SECRET"
+          test -n "$MOMENTUM_ENGINE_SHARED_SECRET"
           printf '%s' "$MOMENTUM_GITHUB_TOKEN" | npx --yes wrangler@4.129.0 secret put GITHUB_TOKEN --config wrangler.deploy.json
           printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
+          printf '%s' "$MOMENTUM_ADMIN_SECRET" | npx --yes wrangler@4.129.0 secret put ADMIN_SECRET --config wrangler.deploy.json
+          printf '%s' "$MOMENTUM_ENGINE_SHARED_SECRET" | npx --yes wrangler@4.129.0 secret put GATEWAY_SHARED_SECRET --config wrangler.deploy.json
       - name: Create Google auth Worker config
         working-directory: auth
         run: |
@@ -156,33 +164,42 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -n "$MOMENTUM_API_KEY_PEPPER"
           test -n "$GOOGLE_CLIENT_ID"
           printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
           printf '%s' "$GOOGLE_CLIENT_ID" | npx --yes wrangler@4.129.0 secret put GOOGLE_CLIENT_ID --config wrangler.deploy.json
       - name: Deploy public gateway
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          MOMENTUM_ENGINE_SHARED_SECRET: ${{ secrets.MOMENTUM_ENGINE_SHARED_SECRET }}
         working-directory: worker
-        run: npx --yes wrangler@4.129.0 deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$MOMENTUM_ENGINE_SHARED_SECRET"
+          npx --yes wrangler@4.129.0 deploy
+          printf '%s' "$MOMENTUM_ENGINE_SHARED_SECRET" | npx --yes wrangler@4.129.0 secret put ENGINE_SHARED_SECRET
       - name: Smoke test public gateway
         shell: bash
         run: |
           set -euo pipefail
           BASE_URL="https://momentum-api-public.manikandanruki2004.workers.dev"
-          check_status(){ [ "$1" = "$2" ] || { echo "Expected HTTP $2, got $1"; exit 1; }; }
           request(){ curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$@"; }
           request "$BASE_URL/health" | tee /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail-free" and .usage == "unlimited" and .max_results == 20' /tmp/health.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding-ok" and .auth == "service-binding-ok" and .access == "gmail-free" and .usage == "100-per-month" and .rate_limit_per_minute == 10 and .max_results == 10' /tmp/health.json >/dev/null
           request "$BASE_URL/version" | tee /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "2.1.0" and .auth == "2.0.0" and .access == "gmail-free"' /tmp/version.json >/dev/null
-          AUTH_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/health")"
-          check_status "$AUTH_STATUS" "200"
+          jq -e '.name == "Momentum API" and .version == "3.0.0" and .engine == "1.4.0" and .auth == "3.0.0" and .access == "gmail-free" and .usage == "100-per-month" and .max_results == 10' /tmp/version.json >/dev/null
+          STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/health")"
+          test "$STATUS" = "200"
           jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-free"' /tmp/auth-health.json >/dev/null
+          STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-config.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/config")"
+          test "$STATUS" = "200"
+          jq -e '.google_client_id | type == "string" and length > 0' /tmp/auth-config.json >/dev/null
           for path in /auth/me /v1/me /v1/momentum; do
             STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/boundary.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL$path")"
-            check_status "$STATUS" "401"
+            test "$STATUS" = "401"
             jq -e '.error.code == "UNAUTHORIZED"' /tmp/boundary.json >/dev/null
           done
           STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/method.json --write-out '%{http_code}' --retry 5 --retry-delay 2 -X PUT "$BASE_URL/health")"
-          check_status "$STATUS" "405"
+          test "$STATUS" = "405"
           jq -e '.error.code == "METHOD_NOT_ALLOWED"' /tmp/method.json >/dev/null
