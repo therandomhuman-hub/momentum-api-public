@@ -64,7 +64,7 @@ This checklist applies the plan-first, small-slice, secure, reliable, observable
 - [x] Repository activity caching exists in the engine architecture.
 - [x] Result counts are bounded by the authenticated plan.
 - [x] Gateway applies explicit edge rate limits per client IP and route.
-- [ ] Add stronger per-user limits at the gateway once authentication identity is available before routing.
+- [x] Authenticated services enforce account/user-specific limits after identity resolution.
 - [ ] Add pagination to any future endpoint whose result set can grow without a hard cap.
 - [x] Non-critical refresh work has a background-job architecture in the engine.
 - [ ] Optimize engine N+1 behavior and upstream latency after observability is complete.
