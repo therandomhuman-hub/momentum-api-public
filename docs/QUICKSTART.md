@@ -2,11 +2,9 @@
 
 Momentum ranks GitHub repositories by developer activity, recency, community signals, popularity, and historical star growth.
 
-## 1. Browser access
+## 1. Browser dashboard
 
-The public web experience uses **Sign in with Google**.
-
-Only verified `@gmail.com` accounts are accepted. Every verified Gmail address receives Free access automatically unless the normalized address is present in the server-side Pro access list.
+The public web experience uses **Sign in with Google**. Only verified `@gmail.com` accounts are accepted, and every verified Gmail address receives the same Free access.
 
 ```text
 https://therandomhuman-hub.github.io/momentum-api-public/
@@ -14,41 +12,19 @@ https://therandomhuman-hub.github.io/momentum-api-public/
 
 No payment account is required.
 
-## 2. Pro access administration
+### Guided discovery
 
-The owner manages Pro access using the server-side admin API. Never put the admin secret in a browser, frontend, SDK, or public repository.
+The dashboard replaces free-form query writing with controls for:
 
-Grant:
+- topic/language;
+- minimum stars;
+- activity window;
+- sort order;
+- quick picks such as Fast movers and Rising stars.
 
-```http
-POST /admin/pro/grant
-X-Admin-Secret: <server-side secret>
-Content-Type: application/json
+Results can be switched between Cards, Table, and Insights views.
 
-{"email":"user@gmail.com"}
-```
-
-Revoke:
-
-```http
-POST /admin/pro/revoke
-X-Admin-Secret: <server-side secret>
-Content-Type: application/json
-
-{"email":"user@gmail.com"}
-```
-
-Access addresses are kept in separate D1 lists:
-
-```text
-google_free_accounts
-  email PRIMARY KEY
-
-google_pro_accounts
-  email PRIMARY KEY
-```
-
-## 3. Developer API
+## 2. Developer API
 
 Developer integrations can still use issued API keys. Store the key as an environment variable and never commit it.
 
@@ -61,11 +37,11 @@ $env:MOMENTUM_API_KEY = "mk_live_..."
 ### cURL
 
 ```bash
-curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=5" \
+curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=10" \
   -H "X-API-Key: mk_live_..."
 ```
 
-## 4. Python SDK
+## 3. Python SDK
 
 ```bash
 pip install httpx
@@ -75,43 +51,44 @@ pip install httpx
 from sdk.python import MomentumClient
 
 client = MomentumClient(api_key="mk_live_...")
-result = client.momentum(language="python", min_stars=100, limit=5)
+result = client.momentum(language="python", min_stars=100, limit=10)
 
 for repo in result["data"]:
     print(repo["repository"], repo["momentum_score"])
 ```
 
-## 5. JavaScript / TypeScript SDK
+## 4. JavaScript / TypeScript SDK
 
 ```javascript
 import { MomentumClient } from "./sdk/javascript/index.js";
 
 const client = new MomentumClient({ apiKey: process.env.MOMENTUM_API_KEY });
-const result = await client.momentum({ language: "python", minStars: 100, limit: 5 });
+const result = await client.momentum({ language: "python", minStars: 100, limit: 10 });
 console.log(result.data);
 ```
 
-## Plans
+## 5. Access
 
-| Tier | Monthly requests | Rate limit | Max results/request |
+| Access | Monthly requests | Rate limit | Max results/request |
 |---|---:|---:|---:|
 | Free | 100 | 10/min | 10 |
-| Pro | 10,000 | 60/min | 25 |
+
+There is no Pro tier and no paid upgrade path.
 
 ## Parameters
 
 | Parameter | Default | Production range |
 |---|---:|---:|
-| `language` | none | GitHub language name |
+| `language` | none | max 64 characters |
 | `min_stars` | 100 | 0–1,000,000 |
 | `max_age_days` | 3650 | 1–36,500 |
-| `limit` | 5 | 1–20 |
+| `limit` | 10 | 1–10 |
 
 ## Errors
 
 `401` means authentication is missing or invalid.
 
-`403` means the browser account is not an accepted Gmail identity or an administrative action is not authorized.
+`403` means the browser account is not an accepted Gmail identity.
 
 `429` means the per-minute rate limit or monthly quota was exceeded.
 
@@ -119,4 +96,4 @@ console.log(result.data);
 
 ## Security
 
-Treat API keys, Google credentials, session tokens, and admin secrets as secrets. Do not commit them to Git, put them in client-side JavaScript, or paste them into screenshots or public issues. The active browser access model does not use a payment provider.
+Treat API keys, Google credentials, and session tokens as secrets. Do not commit them to Git, put them in client-side JavaScript, or paste them into screenshots or public issues. The active product has no payment-provider or paid-tier access logic.
