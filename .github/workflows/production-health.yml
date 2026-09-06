@@ -20,7 +20,7 @@ jobs:
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           request() { curl --connect-timeout 10 --max-time 30 --silent --show-error --retry 3 --retry-delay 2 "$@"; }
           request "$BASE/health" | tee /tmp/gateway.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail"' /tmp/gateway.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail-free"' /tmp/gateway.json >/dev/null
           for header in strict-transport-security x-content-type-options referrer-policy permissions-policy content-security-policy cross-origin-opener-policy; do
             request --head "$BASE/health" | tr -d '\r' | grep -i "^${header}:" >/dev/null
           done
@@ -33,7 +33,7 @@ jobs:
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-binding.json --write-out '%{http_code}' --retry 3 --retry-delay 2 "$BASE/auth/health")"
           test "$STATUS" = "200"
-          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-access"' /tmp/auth-binding.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-free"' /tmp/auth-binding.json >/dev/null
 
       - name: Check unauthenticated boundaries
         shell: bash
@@ -58,7 +58,7 @@ jobs:
           test "$STATUS" = "405"
           jq -e '.error.code == "METHOD_NOT_ALLOWED" and (.error.request_id | type == "string" and length > 0)' /tmp/method.json >/dev/null
 
-      - name: Check unknown route
+      - name: Check retired payment route stays removed
         shell: bash
         run: |
           set -euo pipefail
