@@ -1,12 +1,13 @@
--- Unlimited usage model.
--- No monthly request quota; infrastructure rate limiting remains for abuse protection.
--- Return up to 20 repositories per scan.
+-- Production free plan contract.
+-- 100 requests per month, 10 requests per minute, up to 10 repositories per scan.
 
 UPDATE plans
-SET monthly_quota=0,
-    max_results=20
+SET monthly_quota=100,
+    rate_limit_per_minute=10,
+    max_results=10
 WHERE tier='free';
 
 UPDATE customers
-SET monthly_quota=0
+SET monthly_quota=100,
+    rate_limit_per_minute=10
 WHERE tier='free';
