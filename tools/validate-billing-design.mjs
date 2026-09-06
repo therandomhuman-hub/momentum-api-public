@@ -16,7 +16,7 @@ const required = [
   [billing, 'const results = await env.DB.batch([', 'subscription claim transition uses one D1 transaction'],
   [provider, 'export interface BillingProvider', 'provider interface exists'],
   [provider, 'AbortController', 'provider calls have an explicit timeout'],
-  [provider, 'const maxAttempts = retryableRead ? 3 : 1', 'provider retry budget is restricted to retryable reads'],
+  [provider, 'retryableRead ? (permit === "probe" ? 1 : 3)', 'provider retry budget is restricted to retryable reads and one half-open probe attempt'],
   [provider, 'method: "GET"', 'subscription reads use GET'],
   [provider, 'async createSubscription(payload: RazorpaySubscriptionPayload)', 'subscription creation remains a distinct mutation path'],
   [providerTests, 'retries transient failures for subscription reads', 'transient subscription-read retry is tested'],
