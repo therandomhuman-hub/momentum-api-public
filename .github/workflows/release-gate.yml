@@ -20,10 +20,8 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 -D /tmp/headers.txt "$BASE/health" -o /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .access == "gmail" and .auth == "service-binding" and .engine == "service-binding"' /tmp/health.json >/dev/null
-          for header in strict-transport-security x-content-type-options referrer-policy permissions-policy content-security-policy cross-origin-opener-policy; do
-            grep -qi "^${header}:" /tmp/headers.txt
-          done
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .access == "gmail-free" and .auth == "service-binding" and .engine == "service-binding"' /tmp/health.json >/dev/null
+          for header in strict-transport-security x-content-type-options referrer-policy permissions-policy content-security-policy cross-origin-opener-policy; do grep -qi "^${header}:" /tmp/headers.txt; done
           grep -Eiq "^content-security-policy: .*frame-ancestors 'none'" /tmp/headers.txt
           grep -qi '^x-request-id:' /tmp/headers.txt
 
@@ -33,7 +31,7 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$BASE/version" -o /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "1.8.0" and .access == "gmail" and .auth == "1.3.0"' /tmp/version.json >/dev/null
+          jq -e '.name == "Momentum API" and .version == "2.0.0" and .access == "gmail-free" and .auth == "2.0.0"' /tmp/version.json >/dev/null
 
       - name: Verify auth binding directly
         shell: bash
@@ -42,7 +40,7 @@ jobs:
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           STATUS="$(curl --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE/auth/health")"
           test "$STATUS" = "200"
-          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-access"' /tmp/auth-health.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-free"' /tmp/auth-health.json >/dev/null
 
       - name: Verify protected route boundaries
         shell: bash
@@ -64,13 +62,14 @@ jobs:
           test "$STATUS" = "404"
           jq -e '.error.code == "NOT_FOUND"' /tmp/retired.json >/dev/null
 
-      - name: Verify deployed browser bundle contains Gmail access UI
+      - name: Verify deployed browser dashboard
         shell: bash
         run: |
           set -euo pipefail
           PAGE="https://therandomhuman-hub.github.io/momentum-api-public/"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$PAGE" -o /tmp/page.html
-          grep -q 'Momentum API' /tmp/page.html
+          grep -q 'Momentum' /tmp/page.html
           grep -q 'Sign in with Google' /tmp/page.html
-          grep -q 'Gmail' /tmp/page.html
+          grep -q '100% FREE' /tmp/page.html
+          grep -q 'Quick picks' /tmp/page.html
           ! grep -qi 'Razorpay' /tmp/page.html
