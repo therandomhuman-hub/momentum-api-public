@@ -6,8 +6,11 @@ if (!files.length) throw new Error('No numbered D1 migrations found.');
 const prefixes = files.map(name => Number(name.slice(0, 4)));
 if (prefixes[0] !== 8) throw new Error(`Unexpected D1 migration baseline: found ${files[0].slice(0, 4)}.`);
 for (let i = 1; i < prefixes.length; i++) {
-  if (prefixes[i] <= prefixes[i - 1]) throw new Error(`D1 migration ordering regression: ${files[i - 1]} -> ${files[i]}.`);
+  const delta = prefixes[i] - prefixes[i - 1];
+  if (delta < 0 || delta > 1) throw new Error(`D1 migration ordering/gap regression: ${files[i - 1]} -> ${files[i]}.`);
 }
+const duplicateNumbers = prefixes.filter((value, index) => index > 0 && value === prefixes[index - 1]);
+if (duplicateNumbers.some(value => value !== 16)) throw new Error(`Unexpected duplicate D1 migration number: ${duplicateNumbers.join(', ')}`);
 for (const required of ['0013_google_auth.sql','0014_free_plan_10_results.sql','0017_auth_rate_limit.sql','0021_google_access_lists.sql']) {
   if (!files.includes(required)) throw new Error(`Missing required migration: ${required}`);
 }
