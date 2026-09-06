@@ -1,51 +1,41 @@
-# Momentum API — Access Plans
+# Momentum — Free Access
 
-Momentum currently uses access lists rather than paid checkout. Pricing is not part of the active product.
+Momentum is completely free to use. There is one product experience for every verified Gmail account.
 
-| Tier | Requests / month | Rate limit | Results / request | Intended use |
-|---|---:|---:|---:|---|
-| Free | 100 | 10/min | 10 | Evaluation and small scripts |
-| Pro | 10,000 | 60/min | 25 | Production apps and automation |
+| Access | Requests / month | Rate limit | Results / request |
+|---|---:|---:|---:|
+| Free | 100 | 10/min | 10 |
 
 ## Account experience
 
-Users sign in with Google. Only verified `@gmail.com` identities are accepted by the browser experience.
+Sign in with Google using a verified `@gmail.com` account. The service automatically creates or reuses the Free account.
 
-A new verified Gmail address receives Free access automatically. Pro is activated only when the normalized Gmail address is present in the server-side Pro access list.
+There is no Pro tier, subscription, checkout, payment provider, or payment information collected by the active product.
 
-Developer API keys remain available as an advanced integration mechanism for applications that call Momentum directly.
+Developer API keys remain available for integrations that need direct API access.
 
-## Pro access policy
+## Dashboard
 
-The owner can grant or revoke Pro by Gmail address using the protected administrative endpoints:
+The web dashboard is designed around choices rather than free-form query writing. Users can choose a topic, minimum star range, activity window, sort order, quick-pick preset, and result view.
 
-```http
-POST /admin/pro/grant
-POST /admin/pro/revoke
-```
+Available views include:
 
-The browser never decides its own tier. `/auth/me` re-checks the current server-side access list and updates the operational customer record to match.
+- result cards with momentum meters and signals;
+- sortable-style leaderboard table;
+- insight panels for momentum distribution and top-ranked projects.
 
 ## Plan enforcement
 
-The private engine stores plan limits in its centralized D1 `plans` table. Result limits, monthly quota, and rate limits are enforced server-side by customer tier.
+The private engine keeps the single Free plan as the source of truth for request quota, rate limits, and result caps. The public API and dashboard cannot upgrade an account to another tier.
 
-- **Free:** maximum 10 repositories per request.
-- **Pro:** maximum 25 repositories per request.
-
-The public API accepts the global parameter range supported by the server, but the customer's plan cap is the effective maximum. Quota and rate-limit values are enforced centrally rather than trusting caller-supplied values.
+The forward migration `0022_free_only.sql` normalizes existing customers to Free, removes non-Free plan rows, and removes the legacy Pro Gmail access table.
 
 ## Data model
 
-Free and Pro addresses are stored separately:
+Verified Gmail identities are recorded in the separate Free access table:
 
 ```text
 google_free_accounts(email PRIMARY KEY)
-google_pro_accounts(email PRIMARY KEY)
 ```
 
-An address is maintained in exactly one list.
-
-## Important
-
-The production engine caps commit activity at 500 commits per repository. Do not advertise higher commit limits until implemented and load-tested.
+Customer rows are retained for session, quota, rate-limit, and usage state required by the engine.
