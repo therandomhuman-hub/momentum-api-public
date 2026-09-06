@@ -7,20 +7,100 @@ interface Env {
   ENGINE_SHARED_SECRET?: string;
 }
 
-const baseHeaders={"access-control-allow-headers":"content-type,x-api-key,authorization","access-control-allow-methods":"GET,POST,OPTIONS","strict-transport-security":"max-age=31536000; includeSubDomains","x-content-type-options":"nosniff","referrer-policy":"strict-origin-when-cross-origin","permissions-policy":"camera=(), microphone=(), geolocation=()","content-security-policy":"default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; upgrade-insecure-requests","cross-origin-opener-policy":"same-origin"};
-const requestId=()=>`req_${crypto.randomUUID().replaceAll("-","")}`;
-function corsHeaders(env:Env,origin:string|null){const configured=String(env.PUBLIC_APP_ORIGIN??"https://therandomhuman-hub.github.io").split(",").map(x=>x.trim()).filter(Boolean);return origin&&configured.includes(origin)?{...baseHeaders,"access-control-allow-origin":origin,"access-control-allow-credentials":"true",vary:"Origin"}:{...baseHeaders};}
-function json(env:Env,origin:string|null,body:unknown,status=200,headers:HeadersInit={}){return new Response(JSON.stringify(body),{status,headers:{"content-type":"application/json; charset=utf-8",...corsHeaders(env,origin),...headers}});}
-function rateLimitError(env:Env,origin:string|null,id:string){return json(env,origin,{error:{code:"RATE_LIMITED",message:"Too many requests. Please try again shortly.",request_id:id}},429,{"x-request-id":id,"retry-after":"10"});}
-function clientIp(request:Request){return request.headers.get("cf-connecting-ip")??"unknown";}
-function validateMomentumQuery(url:URL):string|null{const language=url.searchParams.get("language")??"",minStars=Number(url.searchParams.get("min_stars")??100),maxAge=Number(url.searchParams.get("max_age_days")??3650),limit=Number(url.searchParams.get("limit")??10);if(language.length>64||/[\u0000-\u001f]/.test(language))return "language is invalid";if(!Number.isInteger(minStars)||minStars<0||minStars>1000000)return "min_stars must be an integer from 0 to 1000000";if(!Number.isInteger(maxAge)||maxAge<1||maxAge>36500)return "max_age_days must be an integer from 1 to 36500";if(!Number.isInteger(limit)||limit<1||limit>10)return "limit must be an integer from 1 to 10";return null;}
-async function authenticateBrowserSession(env:Env,request:Request):Promise<{customer:{id:string;email?:string|null}}|null>{const authorization=request.headers.get("authorization")??"";const token=authorization.replace(/^Bearer\s+/i,"").trim();if(!token.startsWith("mk_session_"))return null;const authRequest=new Request(new URL("/auth/me",request.url),{method:"GET",headers:{Authorization:`Bearer ${token}`,Accept:"application/json"}});const response=await env.AUTH.fetch(authRequest);if(!response.ok)return null;const body=await response.json<{customer?:{id:string;email?:string|null}}>();if(!body.customer?.id||!body.customer.email)return null;return {customer:body.customer};}
-async function bindingHealth(env:Env){const [engine,auth]=await Promise.allSettled([env.ENGINE.fetch(new Request("https://internal/health")),env.AUTH.fetch(new Request("https://internal/auth/health"))]);return {engine:engine.status==="fulfilled"&&engine.value.ok,auth:auth.status==="fulfilled"&&auth.value.ok};}
-export default{async fetch(request:Request,env:Env){const id=requestId(),url=new URL(request.url),origin=request.headers.get("origin");if(request.method==="OPTIONS")return new Response(null,{status:204,headers:corsHeaders(env,origin)});const isHealth=url.pathname==="/health"||url.pathname==="/version";const ip=clientIp(request),authPaths=["/auth/config","/auth/health","/auth/google","/auth/me","/auth/logout"],isAuth=authPaths.includes(url.pathname),isCustomerProvisioning=url.pathname==="/internal/customers";if(!isHealth){try{const limiter=isAuth?env.AUTH_IP_RATE_LIMIT:env.PUBLIC_IP_RATE_LIMIT;const limited=await limiter.limit({key:`${ip}:${url.pathname}`});if(!limited.success)return rateLimitError(env,origin,id);}catch(error){console.error(JSON.stringify({event:"gateway_rate_limit_failed",path:url.pathname,request_id:id,error:String(error)}));if(isAuth||url.pathname.startsWith("/v1/"))return json(env,origin,{error:{code:"RATE_LIMITER_UNAVAILABLE",message:"Request protection is temporarily unavailable",request_id:id}},503,{"x-request-id":id});}}
-const isAllowedPost=(isAuth&&request.method==="POST")||(isCustomerProvisioning&&request.method==="POST");if(request.method!=="GET"&&!isAllowedPost)return json(env,origin,{error:{code:"METHOD_NOT_ALLOWED",message:"Method not allowed",request_id:id}},405,{allow:"GET,POST,OPTIONS","x-request-id":id});if(url.pathname==="/v1/momentum"&&request.method==="GET"){const problem=validateMomentumQuery(url);if(problem)return json(env,origin,{error:{code:"INVALID_QUERY",message:problem,request_id:id}},400,{"x-request-id":id});}
-if(url.pathname==="/health"&&request.method==="GET"){if(!env.ENGINE_SHARED_SECRET)return json(env,origin,{status:"degraded",service:"momentum-api-public",error:"ENGINE_SHARED_SECRET is not configured",request_id:id},503,{"x-request-id":id});const status=await bindingHealth(env);const ok=status.engine&&status.auth;return json(env,origin,{status:ok?"ok":"degraded",service:"momentum-api-public",engine:status.engine?"service-binding-ok":"unavailable",auth:status.auth?"service-binding-ok":"unavailable",access:"gmail-free",usage:"100-per-month",rate_limit_per_minute:10,max_results:10},ok?200:503,{"x-request-id":id});}
-if(url.pathname==="/version"&&request.method==="GET")return json(env,origin,{name:"Momentum API",version:"3.0.0",engine:"1.4.0",auth:"3.0.0",access:"gmail-free",usage:"100-per-month",rate_limit_per_minute:10,max_results:10},200,{"x-request-id":id});
-if(!url.pathname.startsWith("/v1/")&&!isAuth&&!isCustomerProvisioning)return json(env,origin,{error:{code:"NOT_FOUND",message:"Route not found",request_id:id}},404,{"x-request-id":id});
-const headers=new Headers(request.headers);headers.set("x-request-id",id);if(!env.ENGINE_SHARED_SECRET&&url.pathname.startsWith("/v1/"))return json(env,origin,{error:{code:"GATEWAY_MISCONFIGURED",message:"Engine trust is not configured",request_id:id}},503,{"x-request-id":id});if(env.ENGINE_SHARED_SECRET)headers.set("x-engine-secret",env.ENGINE_SHARED_SECRET);
-if(url.pathname.startsWith("/v1/")&&request.method==="GET"){const browserSession=await authenticateBrowserSession(env,request);if(browserSession){headers.delete("authorization");headers.delete("x-api-key");headers.set("x-momentum-customer-key",browserSession.customer.id);headers.set("x-momentum-customer-email",browserSession.customer.email!);}}
-const upstreamRequest=new Request(url.toString(),{method:request.method,headers,body:request.method==="GET"?undefined:request.body,signal:AbortSignal.timeout(15000)});try{const binding=isAuth?env.AUTH:env.ENGINE;const response=await binding.fetch(upstreamRequest),outHeaders=new Headers(response.headers);outHeaders.set("x-request-id",id);for(const[k,v]of Object.entries(corsHeaders(env,origin)))outHeaders.set(k,v);return new Response(response.body,{status:response.status,headers:outHeaders});}catch(error){console.error(JSON.stringify({event:"service_binding_failed",path:url.pathname,request_id:id,error:String(error)}));return json(env,origin,{error:{code:"UPSTREAM_UNAVAILABLE",message:"Momentum service unavailable",request_id:id}},503,{"x-request-id":id});}}};
+const baseHeaders = {"access-control-allow-headers":"content-type,x-api-key,authorization","access-control-allow-methods":"GET,POST,OPTIONS","strict-transport-security":"max-age=31536000; includeSubDomains","x-content-type-options":"nosniff","referrer-policy":"strict-origin-when-cross-origin","permissions-policy":"camera=(), microphone=(), geolocation=()","content-security-policy":"default-src 'self'; base-uri 'none'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; upgrade-insecure-requests","cross-origin-opener-policy":"same-origin"};
+const requestId = () => `req_${crypto.randomUUID().replaceAll("-","")}`;
+function corsHeaders(env: Env, origin: string | null) {
+  const configured = String(env.PUBLIC_APP_ORIGIN ?? "https://therandomhuman-hub.github.io").split(",").map(x => x.trim()).filter(Boolean);
+  return origin && configured.includes(origin) ? { ...baseHeaders, "access-control-allow-origin": origin, "access-control-allow-credentials": "true", vary: "Origin" } : { ...baseHeaders };
+}
+function json(env: Env, origin: string | null, body: unknown, status = 200, headers: HeadersInit = {}) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type":"application/json; charset=utf-8", ...corsHeaders(env, origin), ...headers } });
+}
+function rateLimitError(env: Env, origin: string | null, id: string) {
+  return json(env, origin, { error: { code:"RATE_LIMITED", message:"Too many requests. Please try again shortly.", request_id:id } }, 429, { "x-request-id":id, "retry-after":"10" });
+}
+function clientIp(request: Request) { return request.headers.get("cf-connecting-ip") ?? "unknown"; }
+function validateMomentumQuery(url: URL): string | null {
+  const language = url.searchParams.get("language") ?? "";
+  const minStars = Number(url.searchParams.get("min_stars") ?? 100);
+  const maxAge = Number(url.searchParams.get("max_age_days") ?? 3650);
+  const limit = Number(url.searchParams.get("limit") ?? 20);
+  if (language.length > 64 || /[\u0000-\u001f]/.test(language)) return "language is invalid";
+  if (!Number.isInteger(minStars) || minStars < 0 || minStars > 1000000) return "min_stars must be an integer from 0 to 1000000";
+  if (!Number.isInteger(maxAge) || maxAge < 1 || maxAge > 36500) return "max_age_days must be an integer from 1 to 36500";
+  if (!Number.isInteger(limit) || limit < 1 || limit > 20) return "limit must be an integer from 1 to 20";
+  return null;
+}
+async function authenticateBrowserSession(env: Env, request: Request): Promise<{ customer:{id:string;email?:string|null} } | null> {
+  const authorization = request.headers.get("authorization") ?? "";
+  const token = authorization.replace(/^Bearer\s+/i, "").trim();
+  if (!token.startsWith("mk_session_")) return null;
+  const authRequest = new Request(new URL("/auth/me", request.url), { method:"GET", headers:{ Authorization:`Bearer ${token}`, Accept:"application/json" } });
+  const response = await env.AUTH.fetch(authRequest);
+  if (!response.ok) return null;
+  const body = await response.json<{customer?:{id:string;email?:string|null}}>();
+  if (!body.customer?.id || !body.customer.email) return null;
+  return { customer:body.customer };
+}
+async function bindingHealth(env: Env) {
+  const [engine, auth] = await Promise.allSettled([env.ENGINE.fetch(new Request("https://internal/health")), env.AUTH.fetch(new Request("https://internal/auth/health"))]);
+  return { engine:engine.status === "fulfilled" && engine.value.ok, auth:auth.status === "fulfilled" && auth.value.ok };
+}
+export default {
+  async fetch(request: Request, env: Env) {
+    const id = requestId(), url = new URL(request.url), origin = request.headers.get("origin");
+    if (request.method === "OPTIONS") return new Response(null, { status:204, headers:corsHeaders(env, origin) });
+    const isHealth = url.pathname === "/health" || url.pathname === "/version";
+    const ip = clientIp(request);
+    const authPaths = ["/auth/config","/auth/health","/auth/google","/auth/me","/auth/logout"];
+    const isAuth = authPaths.includes(url.pathname);
+    const isCustomerProvisioning = url.pathname === "/internal/customers";
+    if (!isHealth) {
+      try {
+        const limiter = isAuth ? env.AUTH_IP_RATE_LIMIT : env.PUBLIC_IP_RATE_LIMIT;
+        const limited = await limiter.limit({ key:`${ip}:${url.pathname}` });
+        if (!limited.success) return rateLimitError(env, origin, id);
+      } catch (error) {
+        console.error(JSON.stringify({ event:"gateway_rate_limit_failed", path:url.pathname, request_id:id, error:String(error) }));
+        if (isAuth || url.pathname.startsWith("/v1/")) return json(env, origin, { error:{ code:"RATE_LIMITER_UNAVAILABLE", message:"Request protection is temporarily unavailable", request_id:id } }, 503, { "x-request-id":id });
+      }
+    }
+    const isAllowedPost = (isAuth && request.method === "POST") || (isCustomerProvisioning && request.method === "POST");
+    if (request.method !== "GET" && !isAllowedPost) return json(env, origin, { error:{ code:"METHOD_NOT_ALLOWED", message:"Method not allowed", request_id:id } }, 405, { allow:"GET,POST,OPTIONS", "x-request-id":id });
+    if (url.pathname === "/v1/momentum" && request.method === "GET") {
+      const problem = validateMomentumQuery(url);
+      if (problem) return json(env, origin, { error:{ code:"INVALID_QUERY", message:problem, request_id:id } }, 400, { "x-request-id":id });
+    }
+    if (url.pathname === "/health" && request.method === "GET") {
+      if (!env.ENGINE_SHARED_SECRET) return json(env, origin, { status:"degraded", service:"momentum-api-public", error:"ENGINE_SHARED_SECRET is not configured", request_id:id }, 503, { "x-request-id":id });
+      const status = await bindingHealth(env), ok = status.engine && status.auth;
+      return json(env, origin, { status:ok?"ok":"degraded", service:"momentum-api-public", engine:status.engine?"service-binding-ok":"unavailable", auth:status.auth?"service-binding-ok":"unavailable", access:"gmail-free", usage:"unlimited", rate_limit_per_minute:10, max_results:20 }, ok?200:503, { "x-request-id":id });
+    }
+    if (url.pathname === "/version" && request.method === "GET") return json(env, origin, { name:"Momentum API", version:"3.1.0", engine:"1.4.0", auth:"3.0.0", access:"gmail-free", usage:"unlimited", rate_limit_per_minute:10, max_results:20 }, 200, { "x-request-id":id });
+    if (!url.pathname.startsWith("/v1/") && !isAuth && !isCustomerProvisioning) return json(env, origin, { error:{ code:"NOT_FOUND", message:"Route not found", request_id:id } }, 404, { "x-request-id":id });
+    const headers = new Headers(request.headers);
+    headers.set("x-request-id", id);
+    if (!env.ENGINE_SHARED_SECRET && url.pathname.startsWith("/v1/")) return json(env, origin, { error:{ code:"GATEWAY_MISCONFIGURED", message:"Engine trust is not configured", request_id:id } }, 503, { "x-request-id":id });
+    if (env.ENGINE_SHARED_SECRET) headers.set("x-engine-secret", env.ENGINE_SHARED_SECRET);
+    if (url.pathname.startsWith("/v1/") && request.method === "GET") {
+      const browserSession = await authenticateBrowserSession(env, request);
+      if (browserSession) {
+        headers.delete("authorization");
+        headers.delete("x-api-key");
+        headers.set("x-momentum-customer-key", browserSession.customer.id);
+        headers.set("x-momentum-customer-email", browserSession.customer.email!);
+      }
+    }
+    const upstreamRequest = new Request(url.toString(), { method:request.method, headers, body:request.method === "GET" ? undefined : request.body, signal:AbortSignal.timeout(15000) });
+    try {
+      const binding = isAuth ? env.AUTH : env.ENGINE;
+      const response = await binding.fetch(upstreamRequest), outHeaders = new Headers(response.headers);
+      outHeaders.set("x-request-id", id);
+      for (const [k,v] of Object.entries(corsHeaders(env, origin))) outHeaders.set(k,v);
+      return new Response(response.body, { status:response.status, headers:outHeaders });
+    } catch (error) {
+      console.error(JSON.stringify({ event:"service_binding_failed", path:url.pathname, request_id:id, error:String(error) }));
+      return json(env, origin, { error:{ code:"UPSTREAM_UNAVAILABLE", message:"Momentum service unavailable", request_id:id } }, 503, { "x-request-id":id });
+    }
+  }
+};
