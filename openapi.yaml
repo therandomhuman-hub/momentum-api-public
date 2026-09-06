@@ -1,11 +1,11 @@
 openapi: 3.1.0
 info:
   title: Momentum API
-  version: 1.8.0
+  version: 2.0.0
   description: >-
-    GitHub momentum intelligence with Gmail-only browser access. Verified
-    Gmail accounts receive Free access automatically; Pro access is managed
-    separately by Gmail address. No payment provider is used.
+    Free GitHub momentum intelligence with Gmail-only browser access. Every
+    verified Gmail account receives the same Free experience. There is no Pro
+    tier and no payment provider.
 servers:
   - url: https://momentum-api-public.manikandanruki2004.workers.dev
 security:
@@ -30,7 +30,7 @@ paths:
       summary: Get authenticated API account and usage
       responses:
         '200':
-          description: Account and usage summary
+          description: Free account and usage summary
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/momentum:
@@ -67,21 +67,21 @@ paths:
   /auth/google:
     post:
       security: []
-      summary: Exchange a verified Google credential for a Momentum session
-      description: Verified @gmail.com accounts are automatically placed in Free access unless the email is in the Pro access list.
+      summary: Exchange a verified Google credential for a free Momentum session
+      description: Verified @gmail.com accounts receive Free access automatically.
       responses:
         '200':
-          description: Authenticated session created
+          description: Free authenticated session created
         '403':
           description: Non-Gmail account
         '429':
           $ref: '#/components/responses/RateOrQuotaExceeded'
   /auth/me:
     get:
-      summary: Get authenticated browser account and effective tier
+      summary: Get authenticated Gmail account and Free plan state
       responses:
         '200':
-          description: Account state
+          description: Free account state
         '401':
           $ref: '#/components/responses/Unauthorized'
   /auth/logout:
@@ -90,42 +90,6 @@ paths:
       responses:
         '200':
           description: Session revoked
-  /admin/pro/grant:
-    post:
-      security:
-        - AdminSecret: []
-      summary: Grant Pro access to a Gmail address
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GmailRequest'
-      responses:
-        '200':
-          description: Pro access granted
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-  /admin/pro/revoke:
-    post:
-      security:
-        - AdminSecret: []
-      summary: Revoke Pro access and return a Gmail address to Free
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GmailRequest'
-      responses:
-        '200':
-          description: Pro access revoked
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '403':
-          $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -133,10 +97,6 @@ components:
       in: header
       name: X-API-Key
       description: Customer API key. Authorization: Bearer is also accepted.
-    AdminSecret:
-      type: apiKey
-      in: header
-      name: X-Admin-Secret
   parameters:
     Language:
       name: language
@@ -166,17 +126,9 @@ components:
       schema:
         type: integer
         minimum: 1
-        maximum: 20
-        default: 5
+        maximum: 10
+        default: 10
   schemas:
-    GmailRequest:
-      type: object
-      required: [email]
-      properties:
-        email:
-          type: string
-          format: email
-          pattern: '^[^\\s@]+@gmail\\.com$'
     ErrorResponse:
       type: object
       required: [error]
@@ -191,16 +143,6 @@ components:
   responses:
     Unauthorized:
       description: Authentication required
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    BadRequest:
-      description: Invalid request
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    Forbidden:
-      description: Administrative authorization required
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
