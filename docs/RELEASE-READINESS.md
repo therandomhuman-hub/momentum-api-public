@@ -1,46 +1,43 @@
 # Momentum Release Readiness
 
-This document is the final pre-production verification procedure for the standalone Gmail access model.
+This is the final acceptance procedure for the standalone Gmail-only product.
 
-## Required sequence
+## Automated gates
 
 1. `Momentum CI` passes.
 2. `Momentum Browser E2E` passes.
-3. Production stack deploy completes.
-4. `Production Health Checks` confirms gateway, auth, security headers, and protected boundaries.
-5. Sign in with a dedicated verified Gmail account from the real browser.
-6. Confirm an unlisted Gmail account receives Free access.
-7. Grant Pro to a controlled Gmail address through the server-side admin endpoint.
-8. Confirm `/auth/me` resolves that Gmail address to Pro.
-9. Revoke Pro and confirm the same address returns to Free.
-10. Record request IDs for any failure without recording session tokens or admin secrets.
+3. The production stack deployment completes.
+4. `Production Health Checks` reports healthy gateway/auth bindings and expected security headers.
+5. `Production Release Gate` verifies the deployed version and public product contract.
 
-## Release-stop conditions
+## Production contract
 
-Stop the release when any of the following occurs:
+The deployed service must report:
 
-- a CI or browser test fails;
-- a service binding health check fails;
-- a non-Gmail identity can obtain browser access;
-- an unlisted Gmail address can obtain Pro access;
-- a client-supplied tier can override the server-side access list;
-- a Gmail address can remain in both Free and Pro lists;
-- a Pro grant/revoke changes state non-atomically;
-- a retired payment route is still exposed;
-- the production release gate cannot verify the deployed version and Gmail access mode.
+```text
+verified @gmail.com access only
+unlimited monthly usage
+10 requests/minute per customer
+maximum 20 repositories per scan
+no paid tier or payment provider
+```
 
 ## Manual browser acceptance
 
-Use a dedicated test Gmail account. No payment credentials or payment-provider interaction is part of the acceptance path.
+Use a dedicated verified Gmail test account.
 
-Expected browser path:
+`open dashboard -> preview -> sign in with Google -> account resolves to Free -> run live scan -> inspect results -> switch Cards/Table -> change filters -> run again -> sign out -> sign in again`
 
-`sign in -> verify Gmail -> Free/Pro resolution -> run live scan -> sign out -> sign in again -> current tier reflected`
+Confirm that a non-Gmail account cannot obtain browser access.
 
-Expected Pro administration path:
+Confirm `limit=20` is accepted and `limit=21` is rejected by the gateway.
 
-`admin grant Gmail -> customer refreshes auth state -> Pro active -> admin revoke Gmail -> customer refreshes auth state -> Free active`
+Confirm anonymous protected requests receive `401` with a request ID.
 
-## Evidence to retain
+## Release-stop conditions
 
-Record the deployed commit SHA, workflow run URLs, browser-test result, and request IDs. Do not record Google ID tokens, session tokens, API keys, admin secrets, or other credentials.
+Stop the release if any CI, E2E, migration, binding health, security-header, authentication, contract, or live-browser check fails; if non-Gmail access is granted; if monthly quota enforcement is accidentally enabled; if more than 20 results can be requested; if protected engine requests can bypass the gateway secret; or if a retired payment route is exposed.
+
+## Evidence
+
+Retain the deployed commit SHA, workflow run URLs, browser-test result, and request IDs for failures. Never retain Google ID tokens, browser session tokens, API keys, admin secrets, or other credentials.
