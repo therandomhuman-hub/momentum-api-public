@@ -1,135 +1,95 @@
-# Momentum Vibe Engineering Checklist
+# Momentum Engineering Checklist
 
-This checklist applies the plan-first, small-slice, secure, reliable, observable engineering model to the standalone free Gmail version of Momentum.
+This checklist covers the standalone free Gmail product and separates release requirements from non-blocking future improvements.
 
-## Plan and scope
+## Product contract
 
-- [x] Core product slice is explicit.
-- [x] Architecture is documented before structural changes.
-- [x] Significant changes have a written implementation plan or decision record.
-- [x] Non-core features remain behind later delivery slices.
+- [x] Verified `@gmail.com` access only.
+- [x] Unlimited monthly usage.
+- [x] 10 requests/minute customer protection.
+- [x] Maximum 20 repositories per scan.
+- [x] No Pro tier, subscription, checkout, or payment provider.
 
 ## Project hygiene
 
 - [ ] Add lockfiles for each independently installed Node project and move CI from `npm install` to `npm ci`.
-- [x] Runtime configuration is kept outside source where supported by the platform.
-- [x] Authentication secrets stay in platform/GitHub secret stores.
-- [x] CI performs tracked-source secret-pattern scanning.
+- [x] Runtime configuration stays outside source where supported.
+- [x] Authentication and deployment secrets stay in secret stores.
+- [x] CI scans tracked source for secret patterns.
+- [x] Obsolete Pages sentinel/trigger artifacts removed.
 
 ## Structure
 
-- [x] Public gateway is separated from authentication and engine services.
-- [ ] Split remaining large service files into smaller domain/persistence modules.
-- [x] UI, API routing, access-control rules, and persistence have explicit ownership boundaries.
-- [x] Active payment-provider code and billing Worker have been removed.
+- [x] Public gateway, authentication, and ranking engine have separate responsibilities.
+- [x] Production engine is the TypeScript Cloudflare Worker.
+- [x] Active billing/payment-provider code is not part of the runtime path.
+- [ ] Split the large engine/gateway files into smaller domain and persistence modules as maintenance work.
 
-## Data
+## Data and migrations
 
-- [x] JSON remains the external API format.
-- [x] D1 stores operational customer/session/usage state.
-- [x] Schema changes are represented as ordered migrations.
-- [x] All browser users use the single Free Gmail access model.
-- [x] Free Gmail identities are stored in a dedicated access table.
-- [x] Gmail access is re-evaluated on authenticated account refresh.
-- [x] Legacy payment tables are removed by a forward migration; historical migrations remain immutable.
-- [ ] Audit the private engine for N+1 access patterns.
-- [x] NoSQL is not introduced without a demonstrated document-shaped requirement.
+- [x] D1 is the operational source of truth.
+- [x] Schema changes are represented by ordered forward migrations.
+- [x] Historical migrations are not rewritten to repair production state.
+- [x] Authoritative unlimited/20-result state is in migration `0025_unlimited_20_results.sql`.
+- [x] Verified Gmail access is represented by the dedicated Free access table.
+- [x] Browser sessions are stored as hashes in `auth_sessions`.
+- [x] Legacy payment tables are retired by forward migration.
+- [ ] Further optimize repository metadata access if production telemetry shows meaningful N+1 cost.
 
 ## Security
 
-- [x] HTTPS service endpoints are used in production.
-- [x] HSTS/security headers are checked in production health tests.
-- [x] Gateway query boundaries validate type, range, and length before forwarding.
-- [x] Auth JSON input validates content type, credential size, and credential structure before verification.
-- [x] Dynamic HTML in the public demo is escaped.
-- [x] Production CORS is explicit rather than wildcard.
-- [ ] Add SSRF defenses before introducing any user-supplied URL fetcher.
-- [x] Session and API credentials are never returned in full after issuance.
-- [x] Google ID tokens require valid signature, issuer, audience, expiration, and verified email.
-- [x] Browser authentication accepts only normalized `@gmail.com` addresses.
-- [x] Authentication has IP-keyed brute-force throttling.
-- [x] Protected actions check authentication and server-side access state.
+- [x] HTTPS production endpoints.
+- [x] HSTS and security headers.
+- [x] Explicit production CORS allowlist.
+- [x] Gateway validates query types, ranges, and lengths before forwarding.
+- [x] Google credentials are validated for issuer, audience, RS256 signature, expiry, and verified email.
+- [x] Only normalized Gmail addresses are admitted.
+- [x] Authentication failures are IP-throttled.
+- [x] Browser sessions are opaque and stored only as HMAC hashes.
+- [x] Protected engine routes require the gateway shared secret.
+- [x] API keys are hashed and never returned after issuance.
+- [x] No credentials are intentionally logged or exposed to the browser.
+- [x] No user-supplied URL fetching exists, so SSRF is not part of the current attack surface.
 
-## Reliability
+## Reliability and performance
 
-- [x] Google signing-key fetches and service-binding calls have bounded timeouts.
-- [x] Free-account creation is idempotent by normalized Gmail address.
-- [ ] Audit remaining shared-state updates for races and make read/modify/write sequences atomic.
-- [x] Edge rate limiting protects authentication and public routes.
-- [x] Production deployment is serialized and fails on unhealthy critical routes.
-
-## Performance
-
-- [x] Repository activity caching exists in the engine architecture.
-- [x] Result counts are bounded by the Free plan.
-- [x] Gateway applies explicit edge rate limits per client IP and route.
-- [x] Authenticated services enforce account/user-specific limits after identity resolution.
-- [ ] Add pagination to any future endpoint whose result set can grow without a hard cap.
-- [x] Non-critical refresh work has a background-job architecture in the engine.
-- [ ] Optimize engine N+1 behavior and upstream latency after observability is complete.
+- [x] External Google/GitHub/service-binding calls have bounded timeouts.
+- [x] Customer rate limiting uses atomic D1 updates.
+- [x] Unlimited monthly usage is explicitly handled without quota rejection.
+- [x] Scan size is hard-capped at 20.
+- [x] GitHub commit lookups use bounded concurrency and pagination.
+- [x] Repository activity is cached and refreshed in background execution.
+- [x] Query-result caching is bounded by TTL.
+- [x] Deployment is serialized and fails on critical health checks.
+- [ ] Add centralized external exception tracking after the core browser journey is proven stable.
+- [ ] Standardize structured logging fields across all Workers.
 
 ## Dashboard UX
 
-- [x] Dashboard provides guided controls rather than requiring free-form query writing.
-- [x] Topic choices are presented as a dropdown.
-- [x] Star thresholds are presented as a dropdown.
-- [x] Activity windows are presented as a dropdown.
-- [x] Sort choices are presented as a dropdown.
-- [x] Quick-pick presets are provided for common discovery tasks.
-- [x] Results can be viewed as cards, leaderboard table, or insights.
-- [x] Preview mode works without authentication.
-- [ ] Add persistent saved views after the core live journey is verified.
-
-## Observability
-
-- [x] Public requests carry request IDs.
-- [x] Cloudflare Worker observability is enabled in deployment configuration.
-- [x] Gateway rate-limit rejections are logged with route, scope, and request ID.
-- [ ] Standardize structured JSON logging fields across all Workers.
-- [ ] Add centralized exception/error tracking with safe customer messages.
+- [x] Guided filters instead of free-form query writing.
+- [x] Quick-pick presets.
+- [x] Preview mode without authentication.
+- [x] Live scan control.
+- [x] Cards and Table result views.
+- [x] Explicit loading and error states.
+- [x] Unlimited / 20-result / 10-per-minute messaging matches the runtime contract.
+- [ ] Add persistent saved views after live usage validates the need.
+- [ ] Add automated accessibility checks.
 
 ## Quality and shipping
 
-- [x] Gateway/auth typechecks run during CI.
-- [x] Engineering-contract checks run during CI.
-- [x] D1 migration contract is checked in CI and deployment.
-- [x] Production health checks cover gateway/auth and retired payment routes.
-- [x] Deployment smoke tests verify Gmail-only access mode and protected route boundaries.
-- [x] Post-deploy production release gate verifies the deployed gateway, auth binding, security headers, and free dashboard UI markers.
-- [ ] Add Playwright coverage for Gmail sign-in and live scan.
-- [x] CI/CD deployment exists.
-
-## Access-control model
-
-- [x] Any verified Gmail account receives the same Free access.
-- [x] No Pro access list exists in the active data model.
-- [x] Client-supplied tier values are ignored for authorization.
-- [x] Existing sessions are refreshed against the single Free plan.
-- [x] There are no paid-tier grant/revoke endpoints.
-
-## Browser verification
-
-The critical browser journey is:
-
-```text
-Open dashboard
-  -> Preview works
-  -> Choose guided filters / quick pick
-  -> Sign in with Google using Gmail
-  -> Account resolves to Free
-  -> Run live query
-  -> Switch Cards / Table / Insights
-  -> Sign out
-  -> Sign in again
-  -> Free access remains active
-```
-
-A build is not complete merely because TypeScript compiles. The browser path and the real service-binding path must be exercised.
+- [x] Gateway and auth typechecks run in CI.
+- [x] Engine typecheck and unlimited/20 contract checks run in CI.
+- [x] D1 migration contract is checked in CI.
+- [x] Browser smoke suite covers dashboard render, preview, anonymous boundaries, invalid queries, and limit 21 rejection.
+- [x] Production deployment includes D1 migrations, engine/auth/gateway deployment, and smoke tests.
+- [x] Production release gate verifies the deployed public contract and retired payment surface.
+- [ ] Add a dedicated authenticated Gmail browser test using a controlled test account; this requires protected test credentials and is not enabled in public CI.
 
 ## Release gate
 
-A production release should satisfy:
+A release should satisfy:
 
-`plan -> validate -> test -> browser smoke -> deploy -> binding health -> live verification`
+`plan -> validate -> CI -> browser smoke -> forward migration -> deploy -> binding health -> release gate -> real Gmail live-scan acceptance`
 
-The post-deploy gate is implemented in `.github/workflows/release-gate.yml`. It verifies the free Gmail dashboard model and confirms retired payment routes are no longer exposed.
+Release evidence should contain the deployed commit SHA, workflow runs, test outcomes, and request IDs for failures. Never retain Google ID tokens, session tokens, API keys, or deployment secrets.
