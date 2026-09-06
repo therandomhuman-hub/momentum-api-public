@@ -31,7 +31,6 @@ jobs:
       - name: Checkout public gateway
         uses: actions/checkout@v7
         with: { persist-credentials: false }
-
       - name: Checkout private engine
         uses: actions/checkout@v7
         with:
@@ -40,7 +39,6 @@ jobs:
           ref: ${{ inputs.private_engine_ref || 'main' }}
           path: _private-engine
           persist-credentials: false
-
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -50,31 +48,24 @@ jobs:
             worker/package.json
             auth/package.json
             _private-engine/worker/package.json
-
       - name: Install gateway dependencies
         working-directory: worker
         run: npm install --no-audit --no-fund
-
       - name: Install auth dependencies
         working-directory: auth
         run: npm install --no-audit --no-fund
-
       - name: Install engine dependencies
         working-directory: _private-engine/worker
         run: npm install --no-audit --no-fund
-
       - name: Typecheck gateway
         working-directory: worker
         run: npm run typecheck
-
       - name: Typecheck auth
         working-directory: auth
         run: npm run typecheck
-
       - name: Typecheck engine
         working-directory: _private-engine/worker
         run: npm run typecheck
-
       - name: Provision Cloudflare D1 and KV
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -106,113 +97,92 @@ jobs:
           test -n "$DB_ID"; test -n "$KV_ID"
           printf '%s' "$DB_ID" > "$GITHUB_WORKSPACE/.momentum_db_id"
           node - "$DB_ID" "$KV_ID" <<'NODE'
-          const fs = require('fs');
-          const base = JSON.parse(fs.readFileSync('wrangler.jsonc', 'utf8'));
-          base.d1_databases = [{ binding: 'DB', database_name: 'momentum-production', database_id: process.argv[2], migrations_dir: 'migrations' }];
-          base.kv_namespaces = [{ binding: 'RATE_LIMIT', id: process.argv[3] }];
-          base.workers_dev = true;
-          fs.writeFileSync('wrangler.deploy.json', JSON.stringify(base, null, 2));
+          const fs=require('fs');
+          const base=JSON.parse(fs.readFileSync('wrangler.jsonc','utf8'));
+          base.d1_databases=[{binding:'DB',database_name:'momentum-production',database_id:process.argv[2],migrations_dir:'migrations'}];
+          base.kv_namespaces=[{binding:'RATE_LIMIT',id:process.argv[3]}];
+          base.workers_dev=true;
+          fs.writeFileSync('wrangler.deploy.json',JSON.stringify(base,null,2));
           NODE
-
       - name: Sync D1 migrations into engine checkout
         run: |
           set -euo pipefail
           mkdir -p _private-engine/worker/migrations
-          for migration in worker/migrations/*.sql; do
-            cp "$migration" "_private-engine/worker/migrations/$(basename "$migration")"
-          done
-
+          for migration in worker/migrations/*.sql; do cp "$migration" "_private-engine/worker/migrations/$(basename "$migration")"; done
       - name: Apply engine D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: _private-engine/worker
         run: npx --yes wrangler@4.129.0 d1 migrations apply momentum-production --remote --config wrangler.deploy.json
-
       - name: Deploy private engine
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: _private-engine/worker
         run: npx --yes wrangler@4.129.0 deploy --config wrangler.deploy.json
-
       - name: Install private Worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MOMENTUM_GITHUB_TOKEN: ${{ secrets.MOMENTUM_GITHUB_TOKEN }}
           MOMENTUM_API_KEY_PEPPER: ${{ secrets.MOMENTUM_API_KEY_PEPPER }}
-          MOMENTUM_ADMIN_SECRET: ${{ secrets.MOMENTUM_ADMIN_SECRET }}
         working-directory: _private-engine/worker
         shell: bash
         run: |
           set -euo pipefail
           printf '%s' "$MOMENTUM_GITHUB_TOKEN" | npx --yes wrangler@4.129.0 secret put GITHUB_TOKEN --config wrangler.deploy.json
           printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
-          printf '%s' "$MOMENTUM_ADMIN_SECRET" | npx --yes wrangler@4.129.0 secret put ADMIN_SECRET --config wrangler.deploy.json
-
       - name: Create Google auth Worker config
         working-directory: auth
         run: |
           set -euo pipefail
           DB_ID="$(cat "$GITHUB_WORKSPACE/.momentum_db_id")"
           node - "$DB_ID" <<'NODE'
-          const fs = require('fs');
-          fs.writeFileSync('wrangler.deploy.json', JSON.stringify({ name:'momentum-auth', main:'src/index.ts', compatibility_date:'2026-08-25', workers_dev:true, observability:{enabled:true}, triggers:{crons:['0 * * * *']}, d1_databases:[{binding:'DB',database_name:'momentum-production',database_id:process.argv[2]}] }, null, 2));
+          const fs=require('fs');
+          fs.writeFileSync('wrangler.deploy.json',JSON.stringify({name:'momentum-auth',main:'src/index.ts',compatibility_date:'2026-08-25',workers_dev:true,observability:{enabled:true},triggers:{crons:['0 * * * *']},d1_databases:[{binding:'DB',database_name:'momentum-production',database_id:process.argv[2]}]},null,2));
           NODE
-
       - name: Deploy Google auth Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: auth
         run: npx --yes wrangler@4.129.0 deploy --config wrangler.deploy.json
-
       - name: Install Google auth Worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MOMENTUM_API_KEY_PEPPER: ${{ secrets.MOMENTUM_API_KEY_PEPPER }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          MOMENTUM_ADMIN_SECRET: ${{ secrets.MOMENTUM_ADMIN_SECRET }}
         working-directory: auth
         shell: bash
         run: |
           set -euo pipefail
           test -n "$GOOGLE_CLIENT_ID"
-          test -n "$MOMENTUM_ADMIN_SECRET"
           printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
           printf '%s' "$GOOGLE_CLIENT_ID" | npx --yes wrangler@4.129.0 secret put GOOGLE_CLIENT_ID --config wrangler.deploy.json
-          printf '%s' "$MOMENTUM_ADMIN_SECRET" | npx --yes wrangler@4.129.0 secret put ADMIN_SECRET --config wrangler.deploy.json
-
       - name: Deploy public gateway
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         working-directory: worker
         run: npx --yes wrangler@4.129.0 deploy
-
       - name: Smoke test public gateway
         shell: bash
         run: |
           set -euo pipefail
           BASE_URL="https://momentum-api-public.manikandanruki2004.workers.dev"
-          check_status() { [ "$1" = "$2" ] || { echo "Expected HTTP $2, got $1"; exit 1; }; }
-          request() { curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$@"; }
-          echo "== health =="
+          check_status(){ [ "$1" = "$2" ] || { echo "Expected HTTP $2, got $1"; exit 1; }; }
+          request(){ curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$@"; }
           request "$BASE_URL/health" | tee /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail"' /tmp/health.json >/dev/null
-          echo "== version =="
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail-free"' /tmp/health.json >/dev/null
           request "$BASE_URL/version" | tee /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "1.8.0" and .access == "gmail"' /tmp/version.json >/dev/null
-          echo "== auth health =="
+          jq -e '.name == "Momentum API" and .version == "2.0.0" and .auth == "2.0.0" and .access == "gmail-free"' /tmp/version.json >/dev/null
           AUTH_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/health")"
           check_status "$AUTH_STATUS" "200"
-          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-access"' /tmp/auth-health.json >/dev/null
-          echo "== protected boundaries =="
+          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-free"' /tmp/auth-health.json >/dev/null
           for path in /auth/me /v1/me /v1/momentum; do
             STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/boundary.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL$path")"
             check_status "$STATUS" "401"
             jq -e '.error.code == "UNAUTHORIZED"' /tmp/boundary.json >/dev/null
           done
-          echo "== invalid method =="
           STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/method.json --write-out '%{http_code}' --retry 5 --retry-delay 2 -X PUT "$BASE_URL/health")"
           check_status "$STATUS" "405"
           jq -e '.error.code == "METHOD_NOT_ALLOWED"' /tmp/method.json >/dev/null
