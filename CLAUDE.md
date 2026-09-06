@@ -5,12 +5,13 @@ This repository follows a plan-first, test-first Vibe Engineering workflow. Do n
 ## Plan
 - Write or update the feature spec before changing implementation.
 - Define the smallest useful slice first; defer non-critical features.
-- For billing, authentication, data migrations, and API contracts, document edge cases before coding.
+- For authentication, access-control changes, data migrations, and API contracts, document edge cases before coding.
 
 ## Structure
-- Keep UI, gateway, domain logic, providers, persistence, and integrations separated.
+- Keep UI, gateway, domain logic, persistence, and integrations separated.
 - Prefer small modules with one responsibility. Split files before they become difficult to review.
-- The public Worker is a gateway, not the source of truth for engine, billing, or auth business rules.
+- The public Worker is a gateway, not the source of truth for engine or authentication business rules.
+- The authentication Worker owns Gmail access-list authorization; the private engine owns ranking, quotas, and usage.
 
 ## Dependencies
 - Pin direct dependency versions.
@@ -19,7 +20,7 @@ This repository follows a plan-first, test-first Vibe Engineering workflow. Do n
 
 ## Configuration and secrets
 - Keep configuration outside source code and validate it at startup/use boundaries.
-- Never commit API keys, webhook secrets, OAuth secrets, database credentials, or tokens.
+- Never commit API keys, OAuth secrets, database credentials, admin credentials, or tokens.
 - Never print raw secrets or credentials in logs. Redact sensitive values in diagnostic output.
 
 ## AI-assisted development
@@ -33,6 +34,8 @@ This repository follows a plan-first, test-first Vibe Engineering workflow. Do n
 - Database changes use ordered migrations only.
 - Multi-step state changes must be atomic where partial success could corrupt business state.
 - Index frequent lookup paths; avoid N+1 query patterns.
+- Gmail access lists are the source of truth for browser Free/Pro authorization.
+- Free and Pro Gmail addresses are stored in separate tables.
 
 ## Security
 - HTTPS-only production traffic with secure headers and secure session handling.
@@ -40,7 +43,9 @@ This repository follows a plan-first, test-first Vibe Engineering workflow. Do n
 - Escape output that reaches HTML.
 - Use an allowlist for CORS origins.
 - Treat user-supplied URLs as hostile; block private/internal destinations and unsafe schemes if server-side fetching is added.
-- Authentication answers who the caller is; authorization separately checks what they can do and what records they own.
+- Authentication answers who the caller is; authorization separately checks what they can do and what records they can access.
+- Only verified `@gmail.com` Google identities are accepted by the browser authentication path.
+- Pro access is granted only when the normalized Gmail address exists in the server-side Pro access list.
 - Apply abuse protection to authentication and public endpoints.
 
 ## Reliability
@@ -68,10 +73,12 @@ This repository follows a plan-first, test-first Vibe Engineering workflow. Do n
 - CI must build/test before deploy; failed validation blocks shipping.
 - Production deployment must have health checks for every service binding and critical dependency.
 
-## Provider adapters
-- External providers live behind thin interfaces/adapters so providers can be swapped or supplemented later.
-- Billing calls must be isolated from gateway routing and persistence policy.
-- Razorpay webhook processing is authoritative for entitlement changes.
+## Access control
+- There is no payment-provider integration in the active product.
+- Any verified Gmail account receives Free access automatically.
+- Pro is an explicit server-side allowlist decision keyed by normalized Gmail address.
+- The owner can grant or revoke Pro through authenticated administrative endpoints.
+- Access changes must never be accepted from the browser as authority.
 
 ## Verification rule
-For every meaningful change, verify the actual user flow when possible. A green unit test is not enough when the browser, service bindings, or external provider are involved.
+For every meaningful change, verify the actual user flow when possible. A green unit test is not enough when the browser or service bindings are involved.
