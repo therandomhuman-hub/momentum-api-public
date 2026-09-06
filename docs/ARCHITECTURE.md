@@ -1,12 +1,12 @@
-# Momentum API — Architecture v3
+# Momentum API — Architecture v4
 
-This architecture applies the plan-first, small-slice, modular, secure, reliable, observable engineering model to Momentum.
+Momentum has one product experience: free GitHub momentum intelligence for verified Gmail users. There is no Pro tier, subscription, checkout, or payment provider.
 
 ## 1. Product boundary
 
-Momentum has one core job: return ranked GitHub repository momentum data. Supporting capabilities are Google authentication, access control, quotas, usage tracking, data freshness, and developer API access.
+Momentum returns ranked GitHub repository momentum data. Supporting capabilities are Google authentication, Free-account access, quotas, usage tracking, data freshness, and developer API access.
 
-There is no payment provider in the active product. Browser access is Gmail-only. Every verified `@gmail.com` account is automatically Free. Pro is granted or revoked by a server-side Gmail access list.
+Every verified `@gmail.com` account is automatically Free.
 
 ## 2. Runtime topology
 
@@ -21,103 +21,102 @@ Browser / SDK
       |             |
       v             v
 momentum-auth   momentum-engine
-Google identity  ranking + quotas
-sessions         usage + caching
-access lists     GitHub access
+Google + free   ranking + quotas
+sessions        usage + caching
       |             |
       +------ D1 --+---- KV
 ```
 
-The gateway owns routing, CORS policy, request IDs, safe error translation, rate-limit boundaries, and service-binding health checks. It does not own authorization lists or ranking logic.
+The gateway owns routing, CORS policy, request IDs, safe error translation, rate-limit boundaries, and service-binding health checks. It does not own ranking logic or payment logic.
 
 ## 3. Layers
 
 ### Presentation
-`demo/` contains the browser application. It talks only to the public gateway. It does not contain secrets or access-control authority.
+`demo/` contains the dashboard. It talks only to the public gateway and contains no secrets.
 
 ### Gateway
-`worker/` is a thin adapter layer. It validates method/path combinations, adds request context, calls the authentication or engine service, and maps failures to safe responses.
+`worker/` is a thin adapter layer. It validates methods and query parameters, adds request context, calls authentication or engine services, and maps failures to safe responses.
 
 ### Domain services
-- `auth/`: verifies Google identity, enforces Gmail-only access, creates sessions, and manages the separate Free/Pro Gmail access lists.
+- `auth/`: verifies Google identity, enforces Gmail-only access, creates sessions, and maintains the Free Gmail access record.
 - private `momentum-engine`: repository ranking, quotas, usage, GitHub access, caching, and background refresh.
 
 ### Persistence
-D1 stores relational customer/session/access/usage state. Migrations are the only schema-change mechanism. KV is used for cache-like or rate-limit state.
+D1 stores customer, session, Free-access, quota, and usage state. Migrations are the only schema-change mechanism. KV is used for rate-limit/cache state.
 
 ## 4. Access-control invariants
 
-1. A verified Gmail identity maps to one Momentum customer account.
+1. A verified Gmail identity maps to one Momentum Free customer account.
 2. Non-Gmail Google identities cannot obtain browser access.
-3. A Gmail address is stored in exactly one access list: Free or Pro.
-4. Pro authorization is derived from the server-side Pro Gmail access list, never from browser state.
-5. Granting Pro removes the address from the Free access list.
-6. Revoking Pro places the address in the Free access list.
-7. Existing sessions are re-authorized against the current access list on `/auth/me`.
-8. The browser never receives admin credentials or internal database details.
+3. Every accepted Gmail address receives the same Free tier.
+4. No browser path can promote an account to another tier.
+5. The active database contains only the Free access list; legacy Pro access is removed by migration.
+6. The browser never receives internal database details or secret credentials.
 
 ## 5. Data model direction
 
-The two access tables are intentionally simple:
+The active Gmail access record is intentionally simple:
 
 ```text
 google_free_accounts
   email PRIMARY KEY
-
-google_pro_accounts
-  email PRIMARY KEY
 ```
 
-Customer rows remain necessary for engine quotas, usage, sessions, and API-key compatibility. The Gmail address is the identity key used to choose the effective tier.
+Customer rows remain necessary for engine quotas, usage, sessions, and API-key compatibility. The Gmail address is the account identity key.
 
-Legacy payment/subscription tables are removed by the standalone access migration. Historical migration files remain immutable because applied migrations are part of the database history.
+The forward migration `0022_free_only.sql` normalizes all existing customers to Free, deletes non-Free plan rows, and removes the legacy Pro access table. Historical migration files remain immutable database history.
 
-## 6. Security
+## 6. Dashboard model
+
+The browser uses guided choices instead of requiring users to write query syntax. Controls include topic, minimum stars, activity window, sort order, and quick-pick presets.
+
+Results can be viewed as cards, a leaderboard table, or an insights panel. Each view is driven from the same result set so presentation changes do not alter ranking semantics.
+
+## 7. Security
 
 - Verify Google issuer, audience, signature, expiration, and `email_verified`.
 - Accept only normalized `@gmail.com` addresses for browser authentication.
-- Keep Pro grant/revoke behind the server-side admin secret and POST-only endpoints.
 - Apply authentication brute-force throttling and edge rate limits.
-- Keep CORS origin allow-listed.
-- Escape dynamic HTML in the browser.
-- Never expose secrets, session tokens after issuance, or admin credentials.
+- Keep CORS origins allow-listed.
+- Escape dynamic HTML in the dashboard.
+- Never expose credentials, session tokens after issuance, API keys, or internal database details in the browser.
 
-## 7. Reliability
+## 8. Reliability
 
 All outbound network calls use bounded timeouts. Retries are restricted to safe/idempotent operations. Database changes that can race use atomic operations or transactions.
 
-The Google signing-key fetch is bounded. Service-binding calls are bounded. Access-list grant/revoke operations update related records atomically.
+Google signing-key fetches and service-binding calls are bounded. Free-account creation is idempotent by normalized email.
 
-## 8. Performance
+## 9. Performance
 
-Live ranking should prefer cached activity where correctness permits. Expensive refresh work belongs in background jobs. Public requests are rate limited, result counts are bounded, and account quota checks remain server-side.
+Live ranking should prefer cached activity where correctness permits. Expensive refresh work belongs in background jobs. Public requests are rate limited, result counts are bounded, and the single Free quota is enforced server-side.
 
-## 9. Observability
+## 10. Observability
 
-Every request gets a request ID. Logs use structured JSON with safe context. Authentication failures, access-list mutations, service-binding failures, rate limiting, quota rejections, and engine latency should be searchable by request ID and normalized Gmail address only when operationally necessary.
+Every request gets a request ID. Logs use structured JSON with safe context. Authentication failures, service-binding failures, rate limiting, quota rejection, and engine latency should be searchable by request ID.
 
-Do not log Google credentials, session tokens, admin secrets, API keys, or complete authentication payloads.
+Do not log Google credentials, session tokens, API keys, or complete authentication payloads.
 
-## 10. Delivery
+## 11. Delivery
 
 ```text
 git push
    -> contract validation
    -> typecheck
    -> tests
-   -> deploy engine/auth/gateway
    -> D1 migration
+   -> deploy engine/auth/gateway
    -> production health checks
    -> release gate
    -> live Gmail sign-in verification
 ```
 
-The release gate must verify that retired payment routes are gone and the deployed browser contains the Gmail access model.
+The release gate verifies that retired payment routes are gone and the deployed dashboard uses the Gmail-only Free model.
 
-## 11. Scope discipline
+## 12. Scope discipline
 
 The current critical path is:
 
-`Open site -> Gmail sign-in -> Free/Pro authorization -> live scan -> results`
+`Open dashboard -> choose filters -> Gmail sign-in -> Free access -> live scan -> cards/table/insights`
 
-Do not reintroduce payment-provider complexity unless a new product decision explicitly requires paid checkout.
+Do not reintroduce a second paid tier or payment-provider workflow unless a future product decision explicitly requires it.
