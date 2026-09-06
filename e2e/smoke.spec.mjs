@@ -38,3 +38,10 @@ test("gateway rejects invalid momentum query parameters at the boundary", async 
   expect(body.error?.code).toBe("INVALID_QUERY");
   expect(body.error?.request_id).toBeTruthy();
 });
+
+test("gateway accepts the new 20-result boundary", async ({ request }) => {
+  const response = await request.get(`${API}/v1/momentum?limit=21`);
+  expect(response.status()).toBe(400);
+  const body = await response.json();
+  expect(body.error?.code).toBe("INVALID_QUERY");
+});
