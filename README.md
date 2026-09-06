@@ -5,15 +5,16 @@ Momentum ranks GitHub repositories by momentum signals such as recent developer 
 ## Product flow
 
 ```text
-Open site
+Open dashboard
+    -> choose guided filters / quick picks
     -> Sign in with Google
     -> verify Gmail identity
-    -> resolve Free/Pro access list
+    -> Free access
     -> bounded live scan
-    -> results
+    -> cards / table / insights
 ```
 
-Momentum is a standalone Gmail-authenticated product. There is no active payment provider or checkout dependency.
+Momentum is a standalone, completely free Gmail-authenticated product. There is no Pro tier, subscription, checkout, or active payment provider.
 
 ## Production API
 
@@ -25,58 +26,37 @@ https://momentum-api-public.manikandanruki2004.workers.dev
 
 ## Customer access
 
-The browser customer experience uses **Sign in with Google** and accepts only verified `@gmail.com` identities.
+The browser customer experience uses **Sign in with Google** and accepts only verified `@gmail.com` identities. Every verified Gmail address receives the same Free account automatically.
 
-Every verified Gmail address receives Free access automatically unless it is present in the separate Pro access list.
-
-| Tier | Requests / month | Rate limit | Max results / request |
+| Access | Requests / month | Rate limit | Max results / request |
 |---|---:|---:|---:|
 | Free | 100 | 10/min | **10** |
-| Pro | 10,000 | 60/min | **25** |
 
-Normal web users do not need to create or paste an API key. Google identity is verified server-side and the application issues a browser session.
+No payment information is required or collected by the active product.
 
-## Pro access
+## Dashboard experience
 
-Pro is an owner-managed Gmail allowlist, not a payment subscription.
+The interactive dashboard is built for people who do not want to write search expressions. It provides guided controls:
 
-Grant Pro to a Gmail address:
+- Topic presets such as Python, JavaScript, TypeScript, Go, Rust, Java, AI/ML, and Web.
+- Star thresholds from any project through 50K+.
+- Activity windows from 30 days through longer history.
+- Sort choices for momentum, stars, or commit activity.
+- Quick picks for Fast movers, Rising stars, Established projects, and Builder favorites.
+- Cards, leaderboard table, and insights views.
 
-```http
-POST /admin/pro/grant
-X-Admin-Secret: <server-side admin secret>
-Content-Type: application/json
-
-{"email":"user@gmail.com"}
-```
-
-Revoke Pro and return the address to Free:
-
-```http
-POST /admin/pro/revoke
-X-Admin-Secret: <server-side admin secret>
-Content-Type: application/json
-
-{"email":"user@gmail.com"}
-```
-
-The admin secret never belongs in browser code. After a grant or revoke, the affected user can sign out/in again or refresh account state.
+Results surface repository name, stars, recent commits, momentum score, momentum level, language, and a compact signal label when supplied by the engine.
 
 ## Gmail access storage
 
-The access model uses two separate D1 tables:
+The active access model uses one separate D1 table:
 
 ```text
 google_free_accounts
   email PRIMARY KEY
-
-google_pro_accounts
-  email PRIMARY KEY
 ```
 
-An address is kept in one list only. Pro takes precedence during authentication, and grant/revoke operations maintain the lists atomically.
-
-Customer rows are retained for service-session, quota, rate-limit, and usage state required by the engine. Legacy payment tables are removed by the forward migration `0021_google_access_lists.sql`; older migration files remain immutable history.
+Customer rows remain necessary for authenticated sessions, quota, rate-limit, and usage state. The forward migration `0022_free_only.sql` normalizes every existing customer to Free, removes non-Free plan rows, and removes the legacy Pro access table.
 
 ## Architecture
 
@@ -91,7 +71,7 @@ Browser / SDK
       |             |
       v             v
 momentum-auth   momentum-engine
-Google + lists  ranking + quotas
+Google + free   ranking + quotas
 sessions        usage + caching
       |             |
       +------ D1 --+---- KV
@@ -99,43 +79,21 @@ sessions        usage + caching
                      GitHub
 ```
 
-The public gateway owns routing, request IDs, CORS policy, safe error translation, edge rate limits, and service-binding health. It does not own access-list authority or ranking logic.
+The public gateway owns routing, request IDs, CORS policy, safe error translation, edge rate limits, and service-binding health. It does not own ranking logic or secret credentials.
 
 The private engine remains the source of truth for quotas, rate limits, result caps, repository ranking, GitHub access, caching, and background refresh work.
 
-## Engineering model
-
-Momentum follows a plan-first, modular, secure, observable shipping model based on the supplied **Vibe Engineering Blocks** reference:
-
-- plan the approach, data, and edge cases before coding;
-- keep the first useful slice small;
-- keep UI, logic, data, and integrations separated;
-- version migrations and protect multi-step writes;
-- validate input at boundaries and keep secrets out of source and logs;
-- use HTTPS, explicit authorization, rate limiting, timeouts, safe retries, and calm error handling;
-- cache repeated work and move slow work to background jobs;
-- use structured logs, request IDs, error tracking, tests, CI/CD, and browser verification;
-- maintain durable AI rules in `CLAUDE.md` and reusable procedures in `skills/`.
-
-Project documents:
-
-- [`CLAUDE.md`](CLAUDE.md) — durable AI/build rules
-- [`docs/PLAN-V2.md`](docs/PLAN-V2.md) — plan-first delivery plan
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system architecture and invariants
-- [`docs/ENGINEERING-CHECKLIST.md`](docs/ENGINEERING-CHECKLIST.md) — implementation gates and remaining work
-- [`skills/secure-saas-build/SKILL.md`](skills/secure-saas-build/SKILL.md) — reusable secure SaaS build procedure
-
-## Interactive demo
+## Interactive dashboard
 
 ```text
 https://therandomhuman-hub.github.io/momentum-api-public/
 ```
 
-The demo provides an immediate sample preview, then uses verified Gmail sign-in for live queries. It contains no production API key or payment checkout.
+The dashboard provides an immediate sample preview, guided choices instead of free-form query writing, verified Gmail sign-in for live queries, and multiple result views. It contains no production API key or payment checkout.
 
 ## API authentication
 
-Developer integrations can continue to use API keys with `X-API-Key` or `Authorization: Bearer` where the engine account has an API key. Browser authorization is controlled by Google Gmail access lists.
+Developer integrations can continue to use API keys with `X-API-Key` or `Authorization: Bearer` where the engine account has an API key. Browser authorization is controlled by the verified Gmail sign-in path.
 
 ```bash
 curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=10" \
@@ -149,16 +107,14 @@ API credentials must never be committed to Git or exposed in browser source.
 ```http
 POST /auth/google
 GET  /auth/config
+GET  /auth/health
 GET  /auth/me
 POST /auth/logout
 GET  /v1/me
 GET  /v1/momentum
-POST /admin/pro/grant
-POST /admin/pro/revoke
-GET  /auth/health
 ```
 
-Retired payment routes such as `/billing/checkout`, `/billing/status`, `/billing/claim`, and `/webhooks/razorpay` are no longer part of the active API surface.
+Retired payment routes are no longer part of the active API surface.
 
 ## Momentum query parameters
 
@@ -167,13 +123,13 @@ Retired payment routes such as `/billing/checkout`, `/billing/status`, `/billing
 | `language` | string | empty | max 64 chars |
 | `min_stars` | integer | `100` | `0..1000000` |
 | `max_age_days` | integer | `3650` | `1..36500` |
-| `limit` | integer | `5` | `1..20` |
+| `limit` | integer | `10` | `1..10` |
 
-The server applies the effective limit of the authenticated plan.
+The server applies the single Free plan limits centrally.
 
 ## Reliability and verification
 
-Production deployment is expected to follow:
+Production deployment follows:
 
 ```text
 git push
@@ -187,10 +143,10 @@ git push
   -> real Gmail browser verification
 ```
 
-A green compile is not sufficient for a browser-facing change. The critical flow must be tested in a real browser, including Gmail sign-in, Free/Pro resolution, live scan, and post-grant/revoke account state.
+A green compile is not sufficient for a browser-facing change. The critical flow must be tested in a real browser, including Gmail sign-in, Free access, guided filters, live scan, and all result views.
 
 ## Security
 
-Google ID tokens are verified server-side for issuer, audience, signature, expiration, and verified email status. Only `@gmail.com` accounts are accepted by the browser authentication path. Developer API keys are stored as HMAC-derived hashes. Pro authorization comes only from the server-side Gmail allowlist. Admin credentials remain in Cloudflare/GitHub secret storage and are never committed to the repository.
+Google ID tokens are verified server-side for issuer, audience, signature, expiration, and verified email status. Only `@gmail.com` accounts are accepted by the browser authentication path. Developer API keys are stored as HMAC-derived hashes. No browser path can promote an account to another tier because the product has only one Free tier.
 
 Report vulnerabilities privately using `SECURITY.md` and never publish credentials or sensitive security details in an issue.
