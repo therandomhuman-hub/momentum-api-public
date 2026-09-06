@@ -5,16 +5,15 @@ Momentum ranks GitHub repositories by momentum signals such as recent developer 
 ## Product flow
 
 ```text
-Google sign-in
+Open site
+    -> Sign in with Google
+    -> verify Gmail identity
+    -> resolve Free/Pro access list
     -> bounded live scan
-    -> Razorpay Pro checkout
-    -> authorization
-    -> verified webhook
-    -> Pro entitlement
-    -> account reflects Pro
+    -> results
 ```
 
-The public experience is deliberately thin: the browser renders the interface and calls the public gateway; domain state stays behind dedicated Workers.
+Momentum is a standalone Gmail-authenticated product. There is no active payment provider or checkout dependency.
 
 ## Production API
 
@@ -24,9 +23,11 @@ Base URL:
 https://momentum-api-public.manikandanruki2004.workers.dev
 ```
 
-## Customer accounts
+## Customer access
 
-The public customer experience uses **Sign in with Google**. A new Google account receives the Free plan.
+The browser customer experience uses **Sign in with Google** and accepts only verified `@gmail.com` identities.
+
+Every verified Gmail address receives Free access automatically unless it is present in the separate Pro access list.
 
 | Tier | Requests / month | Rate limit | Max results / request |
 |---|---:|---:|---:|
@@ -35,13 +36,47 @@ The public customer experience uses **Sign in with Google**. A new Google accoun
 
 Normal web users do not need to create or paste an API key. Google identity is verified server-side and the application issues a browser session.
 
-## Pro billing
+## Pro access
 
-**Pro — ₹99/month**.
+Pro is an owner-managed Gmail allowlist, not a payment subscription.
 
-Each upgrade creates a customer-specific Razorpay subscription. Momentum returns the provider checkout URL promptly and uses verified Razorpay webhook events as the authority for entitlement changes. After returning from checkout, an authenticated account can request `/billing/status` to reconcile the provider's current subscription state; this does not replace webhook authority.
+Grant Pro to a Gmail address:
 
-See [`docs/RAZORPAY_BILLING.md`](docs/RAZORPAY_BILLING.md) for the billing lifecycle.
+```http
+POST /admin/pro/grant
+X-Admin-Secret: <server-side admin secret>
+Content-Type: application/json
+
+{"email":"user@gmail.com"}
+```
+
+Revoke Pro and return the address to Free:
+
+```http
+POST /admin/pro/revoke
+X-Admin-Secret: <server-side admin secret>
+Content-Type: application/json
+
+{"email":"user@gmail.com"}
+```
+
+The admin secret never belongs in browser code. After a grant or revoke, the affected user can sign out/in again or refresh account state.
+
+## Gmail access storage
+
+The access model uses two separate D1 tables:
+
+```text
+google_free_accounts
+  email PRIMARY KEY
+
+google_pro_accounts
+  email PRIMARY KEY
+```
+
+An address is kept in one list only. Pro takes precedence during authentication, and grant/revoke operations maintain the lists atomically.
+
+Customer rows are retained for service-session, quota, rate-limit, and usage state required by the engine. Legacy payment tables are removed by the forward migration `0021_google_access_lists.sql`; older migration files remain immutable history.
 
 ## Architecture
 
@@ -53,18 +88,18 @@ Browser / SDK
 | momentum-api-public       |
 | public Cloudflare gateway |
 +---------------------------+
-    |         |         |
-    v         v         v
-  engine    billing    auth
-    |         |         |
- GitHub     Razorpay   Google
-    |         |         |
-    +---------+---------+
-              |
-             D1 / KV
+      |             |
+      v             v
+momentum-auth   momentum-engine
+Google + lists  ranking + quotas
+sessions        usage + caching
+      |             |
+      +------ D1 --+---- KV
+                       |
+                     GitHub
 ```
 
-The public gateway owns routing, request IDs, CORS policy, safe error translation, and service-binding health. It does not own ranking, billing state, or authentication business logic.
+The public gateway owns routing, request IDs, CORS policy, safe error translation, edge rate limits, and service-binding health. It does not own access-list authority or ranking logic.
 
 The private engine remains the source of truth for quotas, rate limits, result caps, repository ranking, GitHub access, caching, and background refresh work.
 
@@ -74,13 +109,12 @@ Momentum follows a plan-first, modular, secure, observable shipping model based 
 
 - plan the approach, data, and edge cases before coding;
 - keep the first useful slice small;
-- keep UI, logic, data, and provider integrations separated;
+- keep UI, logic, data, and integrations separated;
 - version migrations and protect multi-step writes;
 - validate input at boundaries and keep secrets out of source and logs;
 - use HTTPS, explicit authorization, rate limiting, timeouts, safe retries, and calm error handling;
 - cache repeated work and move slow work to background jobs;
 - use structured logs, request IDs, error tracking, tests, CI/CD, and browser verification;
-- keep external providers behind adapters so they can be replaced later;
 - maintain durable AI rules in `CLAUDE.md` and reusable procedures in `skills/`.
 
 Project documents:
@@ -97,14 +131,14 @@ Project documents:
 https://therandomhuman-hub.github.io/momentum-api-public/
 ```
 
-The demo provides an immediate sample preview, then uses Google sign-in for live queries. It contains no production API key.
+The demo provides an immediate sample preview, then uses verified Gmail sign-in for live queries. It contains no production API key or payment checkout.
 
 ## API authentication
 
-Developer integrations can use API keys with `X-API-Key` or `Authorization: Bearer`.
+Developer integrations can continue to use API keys with `X-API-Key` or `Authorization: Bearer` where the engine account has an API key. Browser authorization is controlled by Google Gmail access lists.
 
 ```bash
-curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=20" \
+curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=10" \
   -H "X-API-Key: mk_live_..."
 ```
 
@@ -119,15 +153,12 @@ GET  /auth/me
 POST /auth/logout
 GET  /v1/me
 GET  /v1/momentum
-POST /billing/checkout
-GET  /billing/status
-POST /billing/claim
-POST /webhooks/razorpay
-GET  /billing/health
+POST /admin/pro/grant
+POST /admin/pro/revoke
 GET  /auth/health
 ```
 
-`GET /billing/status` requires an authenticated browser session and reads the provider subscription through the billing adapter. It is a reconciliation aid for the customer experience; entitlement authority remains the verified Razorpay webhook path.
+Retired payment routes such as `/billing/checkout`, `/billing/status`, `/billing/claim`, and `/webhooks/razorpay` are no longer part of the active API surface.
 
 ## Momentum query parameters
 
@@ -148,15 +179,18 @@ Production deployment is expected to follow:
 git push
   -> validate
   -> typecheck / tests
-  -> deploy services
+  -> D1 migration
+  -> deploy engine/auth/gateway
   -> exercise real service bindings
-  -> verify live critical flows
+  -> production health
+  -> release gate
+  -> real Gmail browser verification
 ```
 
-A green compile is not sufficient for a browser-facing change. The critical upgrade flow must be tested in a real browser, including navigation to the hosted Razorpay checkout, return to Momentum, billing-status reconciliation, and post-webhook account state.
+A green compile is not sufficient for a browser-facing change. The critical flow must be tested in a real browser, including Gmail sign-in, Free/Pro resolution, live scan, and post-grant/revoke account state.
 
 ## Security
 
-Google ID tokens are verified server-side. Google `sub` is the durable identity key. Developer API keys are stored as HMAC-derived hashes. Razorpay webhooks are signature-verified from the raw request body and deduplicated using the provider event ID. Only the configured Pro plan may grant paid entitlement. Secrets remain in Cloudflare/GitHub Actions secret storage and are not committed to this repository.
+Google ID tokens are verified server-side for issuer, audience, signature, expiration, and verified email status. Only `@gmail.com` accounts are accepted by the browser authentication path. Developer API keys are stored as HMAC-derived hashes. Pro authorization comes only from the server-side Gmail allowlist. Admin credentials remain in Cloudflare/GitHub secret storage and are never committed to the repository.
 
 Report vulnerabilities privately using `SECURITY.md` and never publish credentials or sensitive security details in an issue.
