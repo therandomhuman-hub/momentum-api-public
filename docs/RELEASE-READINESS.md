@@ -1,19 +1,19 @@
 # Momentum Release Readiness
 
-This document is the final pre-production verification procedure for the core vertical slice.
+This document is the final pre-production verification procedure for the standalone Gmail access model.
 
 ## Required sequence
 
 1. `Momentum CI` passes.
 2. `Momentum Browser E2E` passes.
 3. Production stack deploy completes.
-4. `Production Health Checks` confirms gateway, auth, billing, headers, and protected boundaries.
-5. Test one real Google-authenticated checkout from the browser.
-6. Confirm the browser reaches the Razorpay hosted checkout URL.
-7. Complete or exit the authorization flow.
-8. Confirm a verified Razorpay webhook is processed.
-9. Confirm the Momentum account reflects the resulting entitlement only from verified billing state.
-10. Record the request/event IDs for any failure.
+4. `Production Health Checks` confirms gateway, auth, security headers, and protected boundaries.
+5. Sign in with a dedicated verified Gmail account from the real browser.
+6. Confirm an unlisted Gmail account receives Free access.
+7. Grant Pro to a controlled Gmail address through the server-side admin endpoint.
+8. Confirm `/auth/me` resolves that Gmail address to Pro.
+9. Revoke Pro and confirm the same address returns to Free.
+10. Record request IDs for any failure without recording session tokens or admin secrets.
 
 ## Release-stop conditions
 
@@ -21,24 +21,26 @@ Stop the release when any of the following occurs:
 
 - a CI or browser test fails;
 - a service binding health check fails;
-- the checkout endpoint creates a provider subscription but does not return its hosted checkout URL;
-- a duplicate checkout can be created by concurrent requests for the same customer;
-- an unverified browser redirect changes the customer's entitlement;
-- a terminal Razorpay event fails to remove the paid entitlement;
-- the production release gate cannot verify the deployed version.
+- a non-Gmail identity can obtain browser access;
+- an unlisted Gmail address can obtain Pro access;
+- a client-supplied tier can override the server-side access list;
+- a Gmail address can remain in both Free and Pro lists;
+- a Pro grant/revoke changes state non-atomically;
+- a retired payment route is still exposed;
+- the production release gate cannot verify the deployed version and Gmail access mode.
 
 ## Manual browser acceptance
 
-Use a dedicated test account and Razorpay test-mode credentials. Do not reuse a production customer for repeated checkout experiments.
+Use a dedicated test Gmail account. No payment credentials or payment-provider interaction is part of the acceptance path.
 
 Expected browser path:
 
-`sign in -> run live scan -> upgrade -> Razorpay authorization -> return -> account refresh`
+`sign in -> verify Gmail -> Free/Pro resolution -> run live scan -> sign out -> sign in again -> current tier reflected`
 
-Expected billing path:
+Expected Pro administration path:
 
-`subscription created -> webhook verified -> event recorded -> subscription reconciled -> entitlement updated`
+`admin grant Gmail -> customer refreshes auth state -> Pro active -> admin revoke Gmail -> customer refreshes auth state -> Free active`
 
 ## Evidence to retain
 
-Record the deployed commit SHA, workflow run URLs, browser-test result, request ID, Razorpay subscription ID, and Razorpay event ID. Do not record API keys, secrets, or full session tokens.
+Record the deployed commit SHA, workflow run URLs, browser-test result, and request IDs. Do not record Google ID tokens, session tokens, API keys, admin secrets, or other credentials.
