@@ -49,12 +49,12 @@ test("RazorpayProvider treats provider 4xx reads as non-transient", async () => 
     return new Response(JSON.stringify({ error: { code: "SUBSCRIPTION_NOT_FOUND" } }), { status: 404 });
   });
 
-  const result = await provider.getSubscription("sub_not_found");
+  const result = await provider.getSubscription("sub_notfound");
   assert.equal(result.ok, false);
   assert.equal(result.status, 404);
   assert.equal(calls, 1);
 
-  const second = await provider.getSubscription("sub_not_found_2");
+  const second = await provider.getSubscription("sub_notfound_2");
   assert.equal(second.status, 404);
   assert.equal(calls, 2);
 });
@@ -72,7 +72,7 @@ test("RazorpayProvider shares read circuit state across provider instances using
   await first.getSubscription("sub_shared_b");
   await first.getSubscription("sub_shared_c");
   const before = calls;
-  const blocked = await second.getSubscription("sub_shared_d");
+  const blocked = await second.getSubscription("sub_sharedd");
 
   assert.equal(calls, before);
   assert.equal(blocked.status, 503);
