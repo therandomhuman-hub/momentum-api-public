@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: Momentum API
-  version: 3.0.0
+  version: 3.1.0
   description: >-
     Free GitHub momentum intelligence with Gmail-only browser access. Every
-    verified Gmail account receives the same Free experience with up to 10
-    repositories returned per momentum scan and 100 requests per calendar
-    month. There is no Pro tier and no payment provider.
+    verified Gmail account receives the same unlimited Free experience with up
+    to 20 repositories returned per momentum scan. There is no Pro tier and no
+    payment provider.
 servers:
   - url: https://momentum-api-public.manikandanruki2004.workers.dev
 security:
@@ -17,66 +17,54 @@ paths:
       security: []
       summary: Production health check
       responses:
-        '200':
-          description: Gateway, authentication binding, and engine binding are healthy
-        '503':
-          description: A required production dependency is unavailable
+        '200': {description: Gateway, authentication binding, and engine binding are healthy}
+        '503': {description: A required production dependency is unavailable}
   /version:
     get:
       security: []
-      summary: API version
+      summary: API version and public limits
       responses:
-        '200':
-          description: Current production contract versions
+        '200': {description: Current production contract versions and limits}
   /v1/me:
     get:
-      summary: Get authenticated account and quota state
+      summary: Get authenticated account state
       responses:
-        '200':
-          description: Free account summary
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '200': {description: Unlimited Free Gmail account summary}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /v1/momentum:
     get:
       summary: Rank GitHub repositories by momentum
-      description: Returns up to 10 ranked repositories per scan. Free accounts have 100 requests per calendar month and a 10-request-per-minute customer limit.
+      description: Returns up to 20 ranked repositories per scan. Monthly usage is unlimited; customer request rate remains 10 requests per minute.
       parameters:
         - $ref: '#/components/parameters/Language'
         - $ref: '#/components/parameters/MinStars'
         - $ref: '#/components/parameters/MaxAgeDays'
         - $ref: '#/components/parameters/Limit'
       responses:
-        '200':
-          description: Ranked repositories
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '429':
-          $ref: '#/components/responses/QuotaOrRateLimited'
-        '502':
-          $ref: '#/components/responses/UpstreamError'
-        '503':
-          $ref: '#/components/responses/UpstreamUnavailable'
+        '200': {description: Ranked repositories}
+        '400': {description: Invalid query}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+        '502': {$ref: '#/components/responses/UpstreamError'}
+        '503': {$ref: '#/components/responses/UpstreamUnavailable'}
   /auth/health:
     get:
       security: []
       summary: Authentication service health
       responses:
-        '200':
-          description: Authentication service is configured
-        '503':
-          description: Authentication configuration is incomplete
+        '200': {description: Authentication service is configured}
+        '503': {description: Authentication configuration is incomplete}
   /auth/config:
     get:
       security: []
       summary: Get public Google sign-in configuration
       responses:
-        '200':
-          description: Google OAuth client configuration
+        '200': {description: Google OAuth client configuration}
   /auth/google:
     post:
       security: []
-      summary: Exchange a verified Google credential for a Free Momentum session
-      description: Only verified @gmail.com accounts are accepted. The session token is opaque and is stored server-side only as a hash.
+      summary: Exchange a verified Google credential for an Unlimited Free Momentum session
+      description: Only verified @gmail.com accounts are accepted. The session token is opaque and stored server-side only as a hash.
       requestBody:
         required: true
         content:
@@ -85,46 +73,35 @@ paths:
               type: object
               required: [credential]
               properties:
-                credential:
-                  type: string
-                  minLength: 1
-                  maxLength: 12000
+                credential: {type: string, minLength: 1, maxLength: 12000}
       responses:
-        '200':
-          description: Free authenticated session created
-        '400':
-          description: Invalid request
-        '401':
-          description: Google credential could not be verified
-        '403':
-          description: Non-Gmail account
-        '429':
-          $ref: '#/components/responses/QuotaOrRateLimited'
+        '200': {description: Unlimited Free authenticated session created}
+        '400': {description: Invalid request}
+        '401': {description: Google credential could not be verified}
+        '403': {description: Non-Gmail account}
+        '429': {$ref: '#/components/responses/RateLimited'}
   /auth/me:
     get:
       security:
         - BearerAuth: []
-      summary: Get the authenticated Gmail account and Free plan state
+      summary: Get authenticated Gmail account and Unlimited Free plan state
       responses:
-        '200':
-          description: Free account state
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '200': {description: Unlimited Free account state}
+        '401': {$ref: '#/components/responses/Unauthorized'}
   /auth/logout:
     post:
       security:
         - BearerAuth: []
       summary: Revoke the authenticated browser session
       responses:
-        '200':
-          description: Session revoked
+        '200': {description: Session revoked}
 components:
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
       in: header
       name: X-API-Key
-      description: Developer API key. Authorization: Bearer mk_live_... is also accepted by the engine.
+      description: Developer API key compatibility for engine clients.
     BearerAuth:
       type: http
       scheme: bearer
@@ -133,54 +110,40 @@ components:
     Language:
       name: language
       in: query
-      schema:
-        type: string
-        maxLength: 64
+      schema: {type: string, maxLength: 64}
     MinStars:
       name: min_stars
       in: query
-      schema:
-        type: integer
-        minimum: 0
-        maximum: 1000000
-        default: 100
+      schema: {type: integer, minimum: 0, maximum: 1000000, default: 100}
     MaxAgeDays:
       name: max_age_days
       in: query
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 36500
-        default: 3650
+      schema: {type: integer, minimum: 1, maximum: 36500, default: 3650}
     Limit:
       name: limit
       in: query
-      schema:
-        type: integer
-        minimum: 1
-        maximum: 10
-        default: 10
+      schema: {type: integer, minimum: 1, maximum: 20, default: 20}
   responses:
     Unauthorized:
       description: Authentication required
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    QuotaOrRateLimited:
-      description: Monthly quota or per-minute rate limit exceeded
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
+    RateLimited:
+      description: Per-minute rate limit exceeded
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     UpstreamError:
       description: GitHub upstream failed
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
     UpstreamUnavailable:
       description: Production service dependency unavailable
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          schema: {$ref: '#/components/schemas/ErrorResponse'}
   schemas:
     ErrorResponse:
       type: object
@@ -190,6 +153,6 @@ components:
           type: object
           required: [code, message, request_id]
           properties:
-            code: { type: string }
-            message: { type: string }
-            request_id: { type: string }
+            code: {type: string}
+            message: {type: string}
+            request_id: {type: string}
