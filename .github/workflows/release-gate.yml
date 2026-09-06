@@ -20,7 +20,7 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 -D /tmp/headers.txt "$BASE/health" -o /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .access == "gmail-free" and .auth == "service-binding" and .engine == "service-binding"' /tmp/health.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .access == "gmail-free" and .auth == "service-binding" and .engine == "service-binding" and .usage == "unlimited" and .max_results == 20' /tmp/health.json >/dev/null
           for header in strict-transport-security x-content-type-options referrer-policy permissions-policy content-security-policy cross-origin-opener-policy; do grep -qi "^${header}:" /tmp/headers.txt; done
           grep -Eiq "^content-security-policy: .*frame-ancestors 'none'" /tmp/headers.txt
           grep -qi '^x-request-id:' /tmp/headers.txt
@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$BASE/version" -o /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "2.0.0" and .access == "gmail-free" and .auth == "2.0.0"' /tmp/version.json >/dev/null
+          jq -e '.name == "Momentum API" and .version == "2.1.0" and .access == "gmail-free" and .auth == "2.0.0"' /tmp/version.json >/dev/null
 
       - name: Verify auth binding directly
         shell: bash
@@ -70,6 +70,9 @@ jobs:
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$PAGE" -o /tmp/page.html
           grep -q 'Momentum' /tmp/page.html
           grep -q 'Sign in with Google' /tmp/page.html
-          grep -q '100% FREE' /tmp/page.html
+          grep -q 'UNLIMITED ACCESS' /tmp/page.html
+          grep -q '20 results per scan' /tmp/page.html
           grep -q 'Quick picks' /tmp/page.html
           ! grep -qi 'Razorpay' /tmp/page.html
+          ! grep -q '100 requests/month' /tmp/page.html
+          ! grep -q 'up to 10 results' /tmp/page.html
