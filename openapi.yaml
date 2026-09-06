@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: Momentum API
-  version: 2.0.0
+  version: 2.1.0
   description: >-
     Free GitHub momentum intelligence with Gmail-only browser access. Every
-    verified Gmail account receives the same Free experience. There is no Pro
-    tier and no payment provider.
+    verified Gmail account receives the same unlimited experience with up to
+    20 repositories returned per momentum scan. There is no Pro tier and no
+    payment provider.
 servers:
   - url: https://momentum-api-public.manikandanruki2004.workers.dev
 security:
@@ -27,15 +28,16 @@ paths:
           description: Version information
   /v1/me:
     get:
-      summary: Get authenticated API account and usage
+      summary: Get authenticated API account state
       responses:
         '200':
-          description: Free account and usage summary
+          description: Unlimited Free account summary
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/momentum:
     get:
       summary: Rank GitHub repositories by momentum
+      description: Returns up to 20 ranked repositories per scan. There is no monthly request quota.
       parameters:
         - $ref: '#/components/parameters/Language'
         - $ref: '#/components/parameters/MinStars'
@@ -47,7 +49,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
-          $ref: '#/components/responses/RateOrQuotaExceeded'
+          $ref: '#/components/responses/RateLimited'
         '502':
           $ref: '#/components/responses/UpstreamError'
   /auth/health:
@@ -67,21 +69,21 @@ paths:
   /auth/google:
     post:
       security: []
-      summary: Exchange a verified Google credential for a free Momentum session
-      description: Verified @gmail.com accounts receive Free access automatically.
+      summary: Exchange a verified Google credential for an unlimited Free Momentum session
+      description: Verified @gmail.com accounts receive unlimited access automatically.
       responses:
         '200':
           description: Free authenticated session created
         '403':
           description: Non-Gmail account
         '429':
-          $ref: '#/components/responses/RateOrQuotaExceeded'
+          $ref: '#/components/responses/RateLimited'
   /auth/me:
     get:
       summary: Get authenticated Gmail account and Free plan state
       responses:
         '200':
-          description: Free account state
+          description: Unlimited Free account state
         '401':
           $ref: '#/components/responses/Unauthorized'
   /auth/logout:
@@ -126,8 +128,8 @@ components:
       schema:
         type: integer
         minimum: 1
-        maximum: 10
-        default: 10
+        maximum: 20
+        default: 20
   schemas:
     ErrorResponse:
       type: object
@@ -146,8 +148,8 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
-    RateOrQuotaExceeded:
-      description: Rate limit or monthly quota exceeded
+    RateLimited:
+      description: Temporary infrastructure rate limit for abusive bursts. There is no monthly usage quota.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
