@@ -3,15 +3,21 @@ import { test, expect } from "@playwright/test";
 const SITE = "https://therandomhuman-hub.github.io/momentum-api-public/";
 const API = "https://momentum-api-public.manikandanruki2004.workers.dev";
 
-test("public demo renders and preview works", async ({ page }) => {
+test("public demo renders and three-step workspace navigation works", async ({ page }) => {
   await page.goto(SITE, { waitUntil: "domcontentloaded" });
   await expect(page).toHaveTitle(/Momentum.*GitHub intelligence/i);
   await expect(page.getByRole("button", { name: /01 · Account.*Your workspace/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /02 · Discover.*Build your scan/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /03 · Results.*Momentum board/i })).toBeVisible();
   await expect(page.getByText("Find projects that are moving now.")).toBeVisible();
+
   await page.getByRole("button", { name: /02 · Discover.*Build your scan/i }).click();
-  await page.getByRole("button", { name: "Preview" }).click();
-  await expect(page.locator(".repo").first()).toBeVisible();
+  await expect(page.locator("#panel-discover")).toBeVisible();
+  await page.getByRole("button", { name: "Preview board" }).click();
+
+  await expect(page.locator("#panel-results")).toBeVisible();
+  await expect(page.locator("#panel-results .repo").first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /03 · Results.*Momentum board/i })).toHaveClass(/active/);
 });
 
 test("auth service binding is reachable", async ({ request }) => {
