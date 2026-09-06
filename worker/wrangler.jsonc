@@ -22,7 +22,6 @@
   ],
   "services": [
     { "binding": "ENGINE", "service": "momentum-engine" },
-    { "binding": "BILLING", "service": "momentum-billing" },
     { "binding": "AUTH", "service": "momentum-auth" }
   ]
 }
