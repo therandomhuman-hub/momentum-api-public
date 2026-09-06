@@ -2,9 +2,9 @@
 
 Momentum ranks GitHub repositories by developer activity, recency, community signals, popularity, and historical star growth.
 
-## 1. Browser dashboard
+## Browser dashboard
 
-The public web experience uses **Sign in with Google**. Only verified `@gmail.com` accounts are accepted, and every verified Gmail address receives the same Free access.
+The public web experience uses **Sign in with Google**. Only verified `@gmail.com` accounts are accepted, and every accepted Gmail address receives the same unlimited Free access.
 
 ```text
 https://therandomhuman-hub.github.io/momentum-api-public/
@@ -14,19 +14,11 @@ No payment account is required.
 
 ### Guided discovery
 
-The dashboard replaces free-form query writing with controls for:
+Use the guided controls for language/topic, minimum stars, activity window, sort order, and quick picks such as Fast movers and Rising stars. Results support Cards and Table views, with preview mode available before sign-in.
 
-- topic/language;
-- minimum stars;
-- activity window;
-- sort order;
-- quick picks such as Fast movers and Rising stars.
+## Developer API
 
-Results can be switched between Cards, Table, and Insights views.
-
-## 2. Developer API
-
-Developer integrations can still use issued API keys. Store the key as an environment variable and never commit it.
+Developer integrations can use an issued API key. Store it outside source control.
 
 ### PowerShell
 
@@ -37,43 +29,17 @@ $env:MOMENTUM_API_KEY = "mk_live_..."
 ### cURL
 
 ```bash
-curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=10" \
+curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=20" \
   -H "X-API-Key: mk_live_..."
 ```
 
-## 3. Python SDK
-
-```bash
-pip install httpx
-```
-
-```python
-from sdk.python import MomentumClient
-
-client = MomentumClient(api_key="mk_live_...")
-result = client.momentum(language="python", min_stars=100, limit=10)
-
-for repo in result["data"]:
-    print(repo["repository"], repo["momentum_score"])
-```
-
-## 4. JavaScript / TypeScript SDK
-
-```javascript
-import { MomentumClient } from "./sdk/javascript/index.js";
-
-const client = new MomentumClient({ apiKey: process.env.MOMENTUM_API_KEY });
-const result = await client.momentum({ language: "python", minStars: 100, limit: 10 });
-console.log(result.data);
-```
-
-## 5. Access
+## Access contract
 
 | Access | Monthly requests | Rate limit | Max results/request |
 |---|---:|---:|---:|
-| Free | 100 | 10/min | 10 |
+| Verified Gmail | Unlimited | 10/min | 20 |
 
-There is no Pro tier and no paid upgrade path.
+Unlimited applies to monthly usage. The 10 requests/minute customer limit remains as infrastructure and abuse protection.
 
 ## Parameters
 
@@ -82,18 +48,18 @@ There is no Pro tier and no paid upgrade path.
 | `language` | none | max 64 characters |
 | `min_stars` | 100 | 0–1,000,000 |
 | `max_age_days` | 3650 | 1–36,500 |
-| `limit` | 10 | 1–10 |
+| `limit` | 20 | 1–20 |
 
 ## Errors
 
 `401` means authentication is missing or invalid.
 
-`403` means the browser account is not an accepted Gmail identity.
+`403` means the browser identity is not an accepted verified Gmail address.
 
-`429` means the per-minute rate limit or monthly quota was exceeded.
+`429` means the per-minute customer rate limit was exceeded.
 
-`502`/`503` indicates a service or GitHub dependency failure.
+`502`/`503` indicates a GitHub or production service dependency failure.
 
 ## Security
 
-Treat API keys, Google credentials, and session tokens as secrets. Do not commit them to Git, put them in client-side JavaScript, or paste them into screenshots or public issues. The active product has no payment-provider or paid-tier access logic.
+Treat API keys, Google credentials, and browser session tokens as secrets. Never commit them, embed them in client-side source, or publish them in issues or screenshots. The active product has no payment-provider or paid-tier authorization logic.
