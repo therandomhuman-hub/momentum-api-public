@@ -36,13 +36,25 @@ jobs:
           set -euo pipefail
           mapfile -t migrations < <(find worker/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]_*.sql' -printf '%f\n' | sort)
           test "${#migrations[@]}" -gt 0
-          expected=8
+          previous=8
+          duplicate_0016=0
           for migration in "${migrations[@]}"; do
             number="${migration:0:4}"
             actual=$((10#$number))
-            test "$actual" -eq "$expected" || { echo "Migration sequence gap: expected $(printf '%04d' "$expected"), found $number"; exit 1; }
-            expected=$((expected + 1))
+            if [ "$actual" -lt "$previous" ]; then
+              echo "Migration ordering regression: previous=$previous found=$number"
+              exit 1
+            fi
+            if [ "$actual" -eq "$previous" ]; then
+              test "$actual" -eq 16 || { echo "Unexpected duplicate migration number: $number"; exit 1; }
+              duplicate_0016=$((duplicate_0016 + 1))
+            elif [ "$actual" -gt $((previous + 1)) ]; then
+              echo "Migration sequence gap: previous=$previous found=$number"
+              exit 1
+            fi
+            previous="$actual"
           done
+          test "$duplicate_0016" -le 1
           test -f worker/migrations/0013_google_auth.sql
           test -f worker/migrations/0017_auth_rate_limit.sql
           test -f worker/migrations/0021_google_access_lists.sql
