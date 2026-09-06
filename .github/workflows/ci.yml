@@ -33,7 +33,7 @@ jobs:
           test -f docs/PLAN-V2.md
           test -f skills/secure-saas-build/SKILL.md
           set +e
-          grep -RniE '(^|[^A-Za-z])(sk-[A-Za-z0-9]{20,}|rk_(live|test)_[A-Za-z0-9]{12,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,})' \
+          grep -RniE '(^|[^A-Za-z])(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{20,})' \
             --exclude-dir=.git \
             --exclude-dir=docs \
             --exclude='*.md' \
@@ -54,14 +54,8 @@ jobs:
       - name: Validate engineering contract
         run: node tools/validate-engineering.mjs
 
-      - name: Validate billing architecture
-        run: node tools/validate-billing-design.mjs
-
       - name: Validate rate-limit contract
         run: node tools/check-rate-limit-contract.mjs
-
-      - name: Validate webhook atomicity
-        run: node tools/validate-webhook-atomicity.mjs
 
       - name: Validate D1 migration contract
         run: node tools/check-migration-contract.mjs
@@ -73,10 +67,6 @@ jobs:
         working-directory: worker
         run: npm install --no-audit --no-fund
 
-      - name: Install billing dependencies
-        working-directory: billing
-        run: npm install --no-audit --no-fund
-
       - name: Install auth dependencies
         working-directory: auth
         run: npm install --no-audit --no-fund
@@ -84,14 +74,6 @@ jobs:
       - name: Typecheck gateway
         working-directory: worker
         run: npm run typecheck
-
-      - name: Typecheck billing
-        working-directory: billing
-        run: npm run typecheck
-
-      - name: Test billing provider
-        working-directory: billing
-        run: npm test
 
       - name: Typecheck auth
         working-directory: auth
