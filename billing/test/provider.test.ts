@@ -54,7 +54,7 @@ test("RazorpayProvider treats provider 4xx reads as non-transient", async () => 
   assert.equal(result.status, 404);
   assert.equal(calls, 1);
 
-  const second = await provider.getSubscription("sub_notfound_2");
+  const second = await provider.getSubscription("sub_notfound2");
   assert.equal(second.status, 404);
   assert.equal(calls, 2);
 });
@@ -68,9 +68,9 @@ test("RazorpayProvider shares read circuit state across provider instances using
   const first = new RazorpayProvider("rzp_shared", "secret", 1000, 2500, failingFetch);
   const second = new RazorpayProvider("rzp_shared", "secret", 1000, 2500, failingFetch);
 
-  await first.getSubscription("sub_shared_a");
-  await first.getSubscription("sub_shared_b");
-  await first.getSubscription("sub_shared_c");
+  await first.getSubscription("sub_shareda");
+  await first.getSubscription("sub_sharedb");
+  await first.getSubscription("sub_sharedc");
   const before = calls;
   const blocked = await second.getSubscription("sub_sharedd");
 
