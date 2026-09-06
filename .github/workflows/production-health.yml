@@ -20,7 +20,7 @@ jobs:
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           request() { curl --connect-timeout 10 --max-time 30 --silent --show-error --retry 3 --retry-delay 2 "$@"; }
           request "$BASE/health" | tee /tmp/gateway.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail-free" and .usage == "unlimited" and .max_results == 20' /tmp/gateway.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding-ok" and .auth == "service-binding-ok" and .access == "gmail-free" and .usage == "unlimited" and .rate_limit_per_minute == 10 and .max_results == 20' /tmp/gateway.json >/dev/null
           for header in strict-transport-security x-content-type-options referrer-policy permissions-policy content-security-policy cross-origin-opener-policy; do
             request --head "$BASE/health" | tr -d '\r' | grep -i "^${header}:" >/dev/null
           done
