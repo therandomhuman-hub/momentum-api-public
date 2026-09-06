@@ -54,6 +54,9 @@ jobs:
       - name: Validate engineering contract
         run: node tools/validate-engineering.mjs
 
+      - name: Validate migration sync
+        run: node tools/validate-migration-sync.mjs
+
       - name: Validate rate-limit contract
         run: node tools/check-rate-limit-contract.mjs
 
