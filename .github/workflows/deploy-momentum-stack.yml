@@ -172,9 +172,9 @@ jobs:
           check_status(){ [ "$1" = "$2" ] || { echo "Expected HTTP $2, got $1"; exit 1; }; }
           request(){ curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$@"; }
           request "$BASE_URL/health" | tee /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail-free"' /tmp/health.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail-free" and .usage == "unlimited" and .max_results == 20' /tmp/health.json >/dev/null
           request "$BASE_URL/version" | tee /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "2.0.0" and .auth == "2.0.0" and .access == "gmail-free"' /tmp/version.json >/dev/null
+          jq -e '.name == "Momentum API" and .version == "2.1.0" and .auth == "2.0.0" and .access == "gmail-free"' /tmp/version.json >/dev/null
           AUTH_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/health")"
           check_status "$AUTH_STATUS" "200"
           jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-free"' /tmp/auth-health.json >/dev/null
