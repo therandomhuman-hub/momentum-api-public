@@ -6,7 +6,7 @@ This checklist covers the standalone free Gmail product and separates release re
 
 - [x] Verified `@gmail.com` access only.
 - [x] Unlimited monthly usage.
-- [x] 10 requests/minute customer protection.
+- [x] 10 requests/minute customer-specific protection.
 - [x] Maximum 20 repositories per scan.
 - [x] No Pro tier, subscription, checkout, or payment provider.
 
@@ -44,7 +44,8 @@ This checklist covers the standalone free Gmail product and separates release re
 - [x] Gateway validates query types, ranges, and lengths before forwarding.
 - [x] Google credentials are validated for issuer, audience, RS256 signature, expiry, and verified email.
 - [x] Only normalized Gmail addresses are admitted.
-- [x] Authentication failures are IP-throttled.
+- [x] Authentication failures are throttled by Cloudflare connecting IP.
+- [x] Public and authentication routes have per-client-IP edge rate limiting.
 - [x] Browser sessions are opaque and stored only as HMAC hashes.
 - [x] Protected engine routes require the gateway shared secret.
 - [x] API keys are hashed and never returned after issuance.
