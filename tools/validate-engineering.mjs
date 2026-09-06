@@ -37,6 +37,8 @@ const openapiContractMatches =
   openapi.includes(`        auth: { type: string, example: ${authVersion} }`) &&
   openapi.includes("$ref: '#/components/schemas/VersionResponse'");
 
+const providerHasThreeReadAttempts = provider.includes("const maxAttempts = retryableRead ? (permit === \"probe\" ? 1 : 3) : 1") || provider.includes("const maxAttempts = retryableRead ? 3 : 1");
+
 const assertions = [
   [index.includes("window.location.href=u.href"), "checkout must navigate directly to the validated Razorpay URL"],
   [index.includes("https://momentum-api-public.manikandanruki2004.workers.dev"), "demo must target the production gateway"],
@@ -45,7 +47,7 @@ const assertions = [
   [claude.includes("Make retryable mutations idempotent"), "idempotency rule missing from CLAUDE.md"],
   [architecture.includes("successful Razorpay subscription creation must return"), "billing invariant missing from architecture"],
   [provider.includes("getSubscription(subscriptionId: string)"), "provider read interface missing"],
-  [provider.includes("const maxAttempts = retryableRead ? 3 : 1"), "provider read retry policy missing"],
+  [providerHasThreeReadAttempts, "provider read retry policy missing"],
   [provider.includes("const attemptTimeoutMs = retryableRead ? this.readTimeoutMs : this.timeoutMs"), "provider read timeout budget missing"],
   [provider.includes("method: \"POST\""), "provider subscription creation path missing"],
   [billing.includes("/billing/status") && billing.includes("provider.getSubscription(sid)"), "authenticated billing status reconciliation missing"],
