@@ -13,11 +13,20 @@ test("public demo renders and three-step workspace navigation works", async ({ p
 
   await page.getByRole("button", { name: /02 · Discover.*Build your scan/i }).click();
   await expect(page.locator("#panel-discover")).toBeVisible();
+  await page.locator("#stars").selectOption("10000");
   await page.getByRole("button", { name: "Preview board" }).click();
 
   await expect(page.locator("#panel-results")).toBeVisible();
   await expect(page.locator("#panel-results .repo").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /03 · Results.*Momentum board/i })).toHaveClass(/active/);
+  await page.getByRole("button", { name: "Why this ranks" }).first().click();
+  await expect(page.getByRole("dialog", { name: "Repository details" })).toBeVisible();
+  await expect(page.getByText("Repository intelligence")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute("href", /github\.com/);
+  await page.getByRole("button", { name: "Close" }).click();
+
+  await page.getByRole("button", { name: /02 · Discover.*Build your scan/i }).click();
+  await expect(page.locator("#stars")).toHaveValue("10000");
 });
 
 test("auth service binding is reachable", async ({ request }) => {
