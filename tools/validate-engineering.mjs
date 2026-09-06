@@ -7,9 +7,9 @@ const required = [
   "docs/PLAN-V2.md",
   "skills/secure-saas-build/SKILL.md",
   "demo/index.html",
-  "billing/src/index.ts",
-  "billing/src/provider.ts",
+  "auth/src/index.ts",
   "worker/src/index.ts",
+  "worker/migrations/0021_google_access_lists.sql",
   "openapi.yaml",
 ];
 
@@ -20,44 +20,42 @@ for (const path of required) {
 const index = readFileSync("demo/index.html", "utf8");
 const claude = readFileSync("CLAUDE.md", "utf8");
 const architecture = readFileSync("docs/ARCHITECTURE.md", "utf8");
-const billing = readFileSync("billing/src/index.ts", "utf8");
+const auth = readFileSync("auth/src/index.ts", "utf8");
 const gateway = readFileSync("worker/src/index.ts", "utf8");
-const provider = readFileSync("billing/src/provider.ts", "utf8");
+const migration = readFileSync("worker/migrations/0021_google_access_lists.sql", "utf8");
 const openapi = readFileSync("openapi.yaml", "utf8");
 
-const versionContract = gateway.match(/\{name:\"Momentum API\",version:\"([^\"]+)\",engine:\"([^\"]+)\",billing:\"([^\"]+)\",auth:\"([^\"]+)\"\}/);
+const versionContract = gateway.match(/\{name:\"Momentum API\",version:\"([^\"]+)\",engine:\"([^\"]+)\",auth:\"([^\"]+)\",access:\"([^\"]+)\"\}/);
 if (!versionContract) throw new Error("Gateway version contract is missing");
-const [, apiVersion, engineVersion, billingVersion, authVersion] = versionContract;
-
-const openapiContractMatches =
-  openapi.includes(`  version: ${apiVersion}`) &&
-  openapi.includes(`        version: { type: string, example: ${apiVersion} }`) &&
-  openapi.includes(`        engine: { type: string, example: ${engineVersion} }`) &&
-  openapi.includes(`        billing: { type: string, example: ${billingVersion} }`) &&
-  openapi.includes(`        auth: { type: string, example: ${authVersion} }`) &&
-  openapi.includes("$ref: '#/components/schemas/VersionResponse'");
-
-const providerHasThreeReadAttempts = provider.includes("const maxAttempts = retryableRead ? (permit === \"probe\" ? 1 : 3) : 1") || provider.includes("const maxAttempts = retryableRead ? 3 : 1");
+const [, apiVersion, engineVersion, authVersion, accessMode] = versionContract;
 
 const assertions = [
-  [index.includes("window.location.href=u.href"), "checkout must navigate directly to the validated Razorpay URL"],
+  [index.includes("Sign in with Google"), "demo must expose Google sign-in"],
+  [index.includes("Gmail"), "demo must explain Gmail-only access"],
   [index.includes("https://momentum-api-public.manikandanruki2004.workers.dev"), "demo must target the production gateway"],
-  [index.includes("/billing/status"), "demo must expose billing status reconciliation"],
+  [!index.toLowerCase().includes("razorpay"), "demo must not contain payment-provider UI"],
+  [!gateway.toLowerCase().includes("razorpay"), "gateway must not contain payment-provider routes"],
+  [!gateway.includes("BILLING"), "gateway must not bind a billing worker"],
+  [auth.includes("normalizeGmail"), "auth must validate Gmail addresses"],
+  [auth.includes("google_pro_accounts"), "auth must use the separate Pro Gmail access list"],
+  [auth.includes("google_free_accounts"), "auth must use the separate Free Gmail access list"],
+  [auth.includes("/admin/pro/grant"), "auth must support explicit Pro grants"],
+  [auth.includes("/admin/pro/revoke"), "auth must support explicit Pro revokes"],
+  [migration.includes("CREATE TABLE IF NOT EXISTS google_free_accounts"), "Free Gmail access table missing"],
+  [migration.includes("CREATE TABLE IF NOT EXISTS google_pro_accounts"), "Pro Gmail access table missing"],
+  [migration.includes("DROP TABLE IF EXISTS razorpay_subscriptions"), "legacy payment state must be removed"],
   [claude.includes("Every outbound network call has a bounded timeout"), "reliability rule missing from CLAUDE.md"],
   [claude.includes("Make retryable mutations idempotent"), "idempotency rule missing from CLAUDE.md"],
-  [architecture.includes("successful Razorpay subscription creation must return"), "billing invariant missing from architecture"],
-  [provider.includes("getSubscription(subscriptionId: string)"), "provider read interface missing"],
-  [providerHasThreeReadAttempts, "provider read retry policy missing"],
-  [provider.includes("const attemptTimeoutMs = retryableRead ? this.readTimeoutMs : this.timeoutMs"), "provider read timeout budget missing"],
-  [provider.includes("method: \"POST\""), "provider subscription creation path missing"],
-  [billing.includes("/billing/status") && billing.includes("provider.getSubscription(sid)"), "authenticated billing status reconciliation missing"],
-  [gateway.includes("/billing/status") && gateway.includes("isBillingStatus") && gateway.includes("binding=env.BILLING"), "gateway must route billing status to the billing service"],
-  [openapi.includes("  /billing/status:"), "OpenAPI must document billing status"],
-  [openapiContractMatches, "OpenAPI version contract must match the gateway contract"],
+  [architecture.includes("Gmail"), "architecture must document Gmail access"],
+  [openapi.includes(`  version: ${apiVersion}`), "OpenAPI version must match gateway"],
+  [openapi.includes("Gmail-only browser access"), "OpenAPI must document Gmail access"],
+  [openapi.includes("/admin/pro/grant:"), "OpenAPI must document Pro grants"],
+  [openapi.includes("/admin/pro/revoke:"), "OpenAPI must document Pro revokes"],
+  [accessMode === "gmail", "gateway access mode must be gmail"],
 ];
 
 for (const [ok, message] of assertions) {
   if (!ok) throw new Error(message);
 }
 
-console.log(`Momentum engineering contract checks passed (API ${apiVersion}, engine ${engineVersion}, billing ${billingVersion}, auth ${authVersion}).`);
+console.log(`Momentum engineering contract checks passed (API ${apiVersion}, engine ${engineVersion}, auth ${authVersion}, access ${accessMode}).`);
