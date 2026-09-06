@@ -1,13 +1,11 @@
--- Production free plan contract.
--- 100 requests per month, 10 requests per minute, up to 10 repositories per scan.
-
+-- Compatibility correction for environments that have not yet applied 0023.
+-- The authoritative current contract is restored by 0024.
 UPDATE plans
-SET monthly_quota=100,
+SET monthly_quota=0,
     rate_limit_per_minute=10,
-    max_results=10
+    max_results=20
 WHERE tier='free';
-
 UPDATE customers
-SET monthly_quota=100,
+SET monthly_quota=0,
     rate_limit_per_minute=10
 WHERE tier='free';
