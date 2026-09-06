@@ -1,8 +1,19 @@
 # Account & Usage API
 
-The authenticated account endpoint lets a customer inspect the plan and current API usage without exposing the API key itself.
+The authenticated account endpoint lets a customer inspect the current plan and API usage without exposing the full API credential.
 
-## Endpoint
+## Browser account
+
+Browser users sign in with a verified Gmail account through Google. The effective plan is determined server-side:
+
+- Free: any verified `@gmail.com` address not present in the Pro access list.
+- Pro: a verified `@gmail.com` address present in the Pro access list.
+
+The browser session is issued by the authentication Worker and stored hashed in D1.
+
+## Developer API account
+
+Developer integrations can use an API key with the existing engine account model.
 
 ```http
 GET /v1/me
@@ -23,38 +34,28 @@ curl https://momentum-api-public.manikandanruki2004.workers.dev/v1/me \
   -H "X-API-Key: mk_live_..."
 ```
 
-Example response:
+The endpoint returns account/plan/usage information and never returns the full API key.
 
-```json
-{
-  "customer": {
-    "id": "cus_...",
-    "name": "My App",
-    "tier": "starter",
-    "active": true,
-    "api_key_prefix": "mk_live_..."
-  },
-  "plan": {
-    "monthly_quota": 5000,
-    "monthly_usage": 42,
-    "remaining_requests": 4958,
-    "rate_limit_per_minute": 30,
-    "max_results": 10,
-    "usage_month": "2026-08"
-  },
-  "usage": {
-    "requests": 42,
-    "successful": 42,
-    "failed": 0,
-    "average_latency_ms": 1260
-  }
-}
+## Pro access administration
+
+Pro access is controlled by Gmail address, not payment status.
+
+```http
+POST /admin/pro/grant
+POST /admin/pro/revoke
 ```
 
-The endpoint returns only a masked API-key prefix. It never returns the full secret key. Full keys are shown only once, at customer provisioning time.
+Both endpoints require the server-side `X-Admin-Secret` and a JSON body containing a valid `@gmail.com` address.
 
-## Billing readiness
+A grant places the address in the Pro list and removes it from the Free list. A revoke does the opposite. The browser's `/auth/me` path rechecks the current Pro list, so access changes take effect without payment callbacks.
 
-When Razorpay billing is added, the payment webhook can change the customer's tier. This endpoint will then immediately expose the effective quota, rate limit, and maximum results for that tier.
+## Storage
 
-Razorpay webhook verification must happen server-side using the raw request body and the `X-Razorpay-Signature` HMAC-SHA256 header.
+The active access model uses two separate tables:
+
+```text
+google_free_accounts(email PRIMARY KEY)
+google_pro_accounts(email PRIMARY KEY)
+```
+
+Operational customer/session/usage records remain in D1 because the engine needs them for quotas, rate limits, and usage tracking.
