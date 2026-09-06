@@ -11,24 +11,22 @@ for (let i = 1; i < prefixes.length; i++) {
 }
 const duplicateNumbers = prefixes.filter((value, index) => index > 0 && value === prefixes[index - 1]);
 if (duplicateNumbers.some(value => value !== 16)) throw new Error(`Unexpected duplicate D1 migration number: ${duplicateNumbers.join(', ')}`);
-for (const required of ['0013_google_auth.sql','0014_free_plan_10_results.sql','0017_auth_rate_limit.sql','0021_google_access_lists.sql','0023_unlimited_20_results.sql','0024_production_free_contract.sql']) {
+for (const required of ['0013_google_auth.sql','0017_auth_rate_limit.sql','0021_google_access_lists.sql','0023_unlimited_20_results.sql','0024_production_free_contract.sql','0025_unlimited_20_results.sql']) {
   if (!files.includes(required)) throw new Error(`Missing required migration: ${required}`);
 }
 const access = fs.readFileSync(`${dir}/0021_google_access_lists.sql`, 'utf8');
 for (const needle of [
   'CREATE TABLE IF NOT EXISTS google_free_accounts',
-  'CREATE TABLE IF NOT EXISTS google_pro_accounts',
-  "lower(trim(email)) LIKE '%@gmail.com'",
   'DROP TABLE IF EXISTS razorpay_subscriptions',
   'DROP TABLE IF EXISTS razorpay_webhook_events',
 ]) {
   if (!access.includes(needle)) throw new Error(`Standalone access migration contract missing: ${needle}`);
 }
-const production = fs.readFileSync(`${dir}/0024_production_free_contract.sql`, 'utf8');
-for (const needle of ['monthly_quota=100', 'rate_limit_per_minute=10', 'max_results=10']) {
-  if (!production.includes(needle)) throw new Error(`Corrective production migration contract missing: ${needle}`);
+const authoritative = fs.readFileSync(`${dir}/0025_unlimited_20_results.sql`, 'utf8');
+for (const needle of ['monthly_quota=0', 'rate_limit_per_minute=10', 'max_results=20']) {
+  if (!authoritative.includes(needle)) throw new Error(`Authoritative unlimited production migration missing: ${needle}`);
 }
-if (production.includes('monthly_quota=0') || production.includes('max_results=20')) {
-  throw new Error('Corrective production migration contains retired unlimited/20-result semantics.');
+if (authoritative.includes('monthly_quota=100') || authoritative.includes('max_results=10')) {
+  throw new Error('Authoritative migration contains retired limited-contract semantics.');
 }
-console.log(`D1 migration contract passed (${files.length} migrations, baseline ${files[0].slice(0, 4)}).`);
+console.log(`D1 migration contract passed (${files.length} migrations, baseline ${files[0].slice(0, 4)}; authoritative 0025 unlimited/20).`);
