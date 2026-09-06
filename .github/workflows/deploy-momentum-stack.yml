@@ -177,8 +177,21 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$MOMENTUM_ENGINE_SHARED_SECRET"
-          npx --yes wrangler@4.129.0 deploy
-          printf '%s' "$MOMENTUM_ENGINE_SHARED_SECRET" | npx --yes wrangler@4.129.0 secret put ENGINE_SHARED_SECRET
+          umask 077
+          cat > gateway-secrets.json <<'JSON'
+          {
+            "ENGINE_SHARED_SECRET": "__ENGINE_SHARED_SECRET__"
+          }
+          JSON
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          p=Path('gateway-secrets.json')
+          s=p.read_text()
+          p.write_text(s.replace('__ENGINE_SHARED_SECRET__', os.environ['MOMENTUM_ENGINE_SHARED_SECRET']))
+          PY
+          npx --yes wrangler@4.129.0 deploy --secrets-file gateway-secrets.json
+          rm -f gateway-secrets.json
       - name: Smoke test public gateway
         shell: bash
         run: |
