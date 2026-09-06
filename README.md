@@ -1,6 +1,6 @@
 # Momentum API
 
-Momentum ranks GitHub repositories by momentum signals such as recent developer activity, repository recency, community size, popularity, and — once enough history exists — recent star growth.
+Momentum ranks GitHub repositories by momentum signals such as recent developer activity, repository recency, community size, popularity, and — once history exists — recent star growth.
 
 ## Product flow
 
@@ -36,27 +36,7 @@ No payment information is required or collected by the active product.
 
 ## Dashboard experience
 
-The interactive dashboard is built for people who do not want to write search expressions. It provides guided controls:
-
-- Topic presets such as Python, JavaScript, TypeScript, Go, Rust, Java, AI/ML, and Web.
-- Star thresholds from any project through 50K+.
-- Activity windows from 30 days through longer history.
-- Sort choices for momentum, stars, or commit activity.
-- Quick picks for Fast movers, Rising stars, Established projects, and Builder favorites.
-- Cards, leaderboard table, and insights views.
-
-Results surface repository name, stars, recent commits, momentum score, momentum level, language, and a compact signal label when supplied by the engine.
-
-## Gmail access storage
-
-The active access model uses one separate D1 table:
-
-```text
-google_free_accounts
-  email PRIMARY KEY
-```
-
-Customer rows remain necessary for authenticated sessions, quota, rate-limit, and usage state. The forward migration `0022_free_only.sql` normalizes every existing customer to Free, removes non-Free plan rows, and removes the legacy Pro access table.
+The interactive dashboard is built for people who do not want to write search expressions. It provides guided controls for topic, minimum stars, activity window, sort order, and quick-pick presets. Results can be viewed as cards, a leaderboard table, or an insights panel.
 
 ## Architecture
 
@@ -71,36 +51,26 @@ Browser / SDK
       |             |
       v             v
 momentum-auth   momentum-engine
-Google + free   ranking + quotas
-sessions        usage + caching
+Google + free   ranking + quota
+sessions        GitHub + cache
       |             |
-      +------ D1 --+---- KV
-                       |
-                     GitHub
+      +------ shared D1 ------+
+                 +-- KV / edge cache
 ```
 
-The public gateway owns routing, request IDs, CORS policy, safe error translation, edge rate limits, and service-binding health. It does not own ranking logic or secret credentials.
+The public gateway owns routing, CORS policy, request IDs, edge rate limits, query validation, and service-binding health checks. The gateway validates browser sessions through the auth Worker and hands the verified customer identity to the engine through a private service-binding secret.
 
-The private engine remains the source of truth for quotas, rate limits, result caps, repository ranking, GitHub access, caching, and background refresh work.
+The production engine is the **TypeScript Cloudflare Worker in `momentum-engine/worker`**. Its D1 schema is the source of truth for customers, API keys, usage, plans, snapshots, and activity cache. The top-level Python FastAPI app in that repository is retained as a separate non-production/legacy implementation and is not deployed by the production workflow.
 
-## Interactive dashboard
+## Authentication boundary
 
-```text
-https://therandomhuman-hub.github.io/momentum-api-public/
-```
+Google ID tokens are verified server-side for issuer, audience, signature, expiration, and verified email status. Only verified `@gmail.com` accounts are accepted by the browser authentication path.
 
-The dashboard provides an immediate sample preview, guided choices instead of free-form query writing, verified Gmail sign-in for live queries, and multiple result views. It contains no production API key or payment checkout.
+Browser session tokens are stored only as one-way HMAC hashes in `auth_sessions`. They are **not** inserted into the developer `api_keys` table. A browser `/v1/*` request is revalidated by the auth Worker at the gateway and then forwarded to the engine with the external customer ID and Gmail address; the engine never treats a browser session token as a developer API key.
 
-## API authentication
+Developer integrations may use `X-API-Key` or `Authorization: Bearer mk_live_...`. API keys are stored as HMAC-derived hashes and are never returned after creation.
 
-Developer integrations can continue to use API keys with `X-API-Key` or `Authorization: Bearer` where the engine account has an API key. Browser authorization is controlled by the verified Gmail sign-in path.
-
-```bash
-curl "https://momentum-api-public.manikandanruki2004.workers.dev/v1/momentum?language=python&min_stars=100&limit=10" \
-  -H "X-API-Key: mk_live_..."
-```
-
-API credentials must never be committed to Git or exposed in browser source.
+The engine requires `GATEWAY_SHARED_SECRET` on all `/v1/*` requests. The public gateway sends the matching `ENGINE_SHARED_SECRET`, so browser identity headers cannot be forged through the public API.
 
 ## Core endpoints
 
@@ -112,9 +82,9 @@ GET  /auth/me
 POST /auth/logout
 GET  /v1/me
 GET  /v1/momentum
+GET  /health
+GET  /version
 ```
-
-Retired payment routes are no longer part of the active API surface.
 
 ## Momentum query parameters
 
@@ -125,7 +95,17 @@ Retired payment routes are no longer part of the active API surface.
 | `max_age_days` | integer | `3650` | `1..36500` |
 | `limit` | integer | `10` | `1..10` |
 
-The server applies the single Free plan limits centrally.
+The gateway validates these constraints before forwarding. The engine applies the same hard caps centrally.
+
+## Usage and rate limiting
+
+Free access is **100 momentum requests per calendar month** with a **10 requests/minute** customer-level burst limit. Both limits are enforced server-side using atomic D1 updates. Usage accounting is retained for operational reporting.
+
+## Ranking quality
+
+The engine uses live GitHub repository search plus cached/background activity refresh. Commit lookups are bounded and concurrency-limited. GitHub rate-limit responses are represented as partial/unavailable activity instead of silently pretending that a repository has zero activity.
+
+The momentum model uses recent commits, repository recency, community signals, baseline popularity, and seven-day star-growth history when enough snapshots exist. Historical snapshots are refreshed by a scheduled Worker job and retained for a bounded period.
 
 ## Reliability and verification
 
@@ -133,20 +113,33 @@ Production deployment follows:
 
 ```text
 git push
-  -> validate
-  -> typecheck / tests
+  -> validate/typecheck
   -> D1 migration
   -> deploy engine/auth/gateway
-  -> exercise real service bindings
-  -> production health
-  -> release gate
-  -> real Gmail browser verification
+  -> install production secrets
+  -> real service-binding health
+  -> boundary smoke tests
+  -> production release gate
 ```
 
-A green compile is not sufficient for a browser-facing change. The critical flow must be tested in a real browser, including Gmail sign-in, Free access, guided filters, live scan, and all result views.
+A green compile is not sufficient for a browser-facing change. The critical path must be verified in a real browser, including Gmail sign-in, Free access, guided filters, live scan, and all result views.
+
+## Required deployment secrets
+
+The production deployment workflow expects the following GitHub Actions secrets:
+
+```text
+CLOUDFLARE_API_TOKEN
+CLOUDFLARE_ACCOUNT_ID
+MOMENTUM_GITHUB_TOKEN
+MOMENTUM_API_KEY_PEPPER
+MOMENTUM_ADMIN_SECRET
+MOMENTUM_ENGINE_SHARED_SECRET
+GOOGLE_CLIENT_ID
+```
+
+`MOMENTUM_ENGINE_SHARED_SECRET` is installed into both the private engine as `GATEWAY_SHARED_SECRET` and the public gateway as `ENGINE_SHARED_SECRET`.
 
 ## Security
 
-Google ID tokens are verified server-side for issuer, audience, signature, expiration, and verified email status. Only `@gmail.com` accounts are accepted by the browser authentication path. Developer API keys are stored as HMAC-derived hashes. No browser path can promote an account to another tier because the product has only one Free tier.
-
-Report vulnerabilities privately using `SECURITY.md` and never publish credentials or sensitive security details in an issue.
+Never commit `.env`, GitHub tokens, Cloudflare credentials, API keys, Google credentials, or deployment secrets. Report vulnerabilities privately using `SECURITY.md` and never publish credentials or sensitive security details in an issue.
