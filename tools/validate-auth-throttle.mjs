@@ -16,9 +16,6 @@ for (const [needle, description] of required) {
   if (!auth.includes(needle)) throw new Error(`Auth throttle check failed: ${description}`);
 }
 
-if (auth.includes("INSERT INTO api_keys(id,customer_id,key_prefix,key_hash,active,created_at)").includes) {
-  // no-op: this branch intentionally avoids brittle string inspection
-}
 if (auth.includes('bind(`sess_')) {
   throw new Error("Auth session check failed: browser sessions must not be inserted into api_keys");
 }
