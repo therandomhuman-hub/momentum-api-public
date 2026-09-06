@@ -6,9 +6,12 @@ const API = "https://momentum-api-public.manikandanruki2004.workers.dev";
 test("public demo renders and preview works", async ({ page }) => {
   await page.goto(SITE, { waitUntil: "domcontentloaded" });
   await expect(page).toHaveTitle(/Momentum.*GitHub intelligence/i);
-  await expect(page.getByRole("heading", { name: /Find GitHub projects/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /01 · Account.*Your workspace/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /02 · Discover.*Build your scan/i })).toBeVisible();
+  await expect(page.getByText("Find projects that are moving now.")).toBeVisible();
+  await page.getByRole("button", { name: /02 · Discover.*Build your scan/i }).click();
   await page.getByRole("button", { name: "Preview" }).click();
-  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await expect(page.locator(".repo").first()).toBeVisible();
 });
 
 test("auth service binding is reachable", async ({ request }) => {
@@ -39,7 +42,7 @@ test("gateway rejects invalid momentum query parameters at the boundary", async 
   expect(body.error?.request_id).toBeTruthy();
 });
 
-test("gateway accepts the new 20-result boundary", async ({ request }) => {
+test("gateway rejects limits above the 20-result boundary", async ({ request }) => {
   const response = await request.get(`${API}/v1/momentum?limit=21`);
   expect(response.status()).toBe(400);
   const body = await response.json();
