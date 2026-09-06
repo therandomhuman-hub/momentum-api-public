@@ -31,7 +31,7 @@ jobs:
           set -euo pipefail
           BASE="https://momentum-api-public.manikandanruki2004.workers.dev"
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$BASE/version" -o /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "2.1.0" and .access == "gmail-free" and .auth == "2.0.0"' /tmp/version.json >/dev/null
+          jq -e '.name == "Momentum API" and .version == "2.0.0" and .access == "gmail-free" and .auth == "2.0.0" and .usage == "unlimited" and .max_results == 20' /tmp/version.json >/dev/null
 
       - name: Verify auth binding directly
         shell: bash
@@ -70,9 +70,11 @@ jobs:
           curl --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$PAGE" -o /tmp/page.html
           grep -q 'Momentum' /tmp/page.html
           grep -q 'Sign in with Google' /tmp/page.html
-          grep -q 'UNLIMITED ACCESS' /tmp/page.html
-          grep -q '20 results per scan' /tmp/page.html
-          grep -q 'Quick picks' /tmp/page.html
+          grep -q 'FREE · UNLIMITED' /tmp/page.html
+          grep -q '20 repositories per scan' /tmp/page.html
+          grep -q 'Fast movers' /tmp/page.html
           ! grep -qi 'Razorpay' /tmp/page.html
           ! grep -q '100 requests/month' /tmp/page.html
           ! grep -q 'up to 10 results' /tmp/page.html
+          ! grep -q '../openapi.yaml' /tmp/page.html
+          ! grep -q '../README.md' /tmp/page.html
