@@ -1,6 +1,6 @@
-# Momentum API — Launch Pricing
+# Momentum API — Access Plans
 
-These are the public launch-plan defaults. Pricing and limits can be adjusted later while validating demand and operating cost.
+Momentum currently uses access lists rather than paid checkout. Pricing is not part of the active product.
 
 | Tier | Requests / month | Rate limit | Results / request | Intended use |
 |---|---:|---:|---:|---|
@@ -9,30 +9,42 @@ These are the public launch-plan defaults. Pricing and limits can be adjusted la
 
 ## Account experience
 
-Users sign in with Google. A new Google account automatically receives the Free plan. Normal web users do not need to copy or manage an API key.
+Users sign in with Google. Only verified `@gmail.com` identities are accepted by the browser experience.
+
+A new verified Gmail address receives Free access automatically. Pro is activated only when the normalized Gmail address is present in the server-side Pro access list.
 
 Developer API keys remain available as an advanced integration mechanism for applications that call Momentum directly.
 
-## Pro billing
+## Pro access policy
 
-Momentum has one public paid plan: Pro at ₹99/month. The public website uses one reusable Razorpay Subscription Link. Each payer receives a separate Razorpay subscription; the link itself is not tied to one customer.
+The owner can grant or revoke Pro by Gmail address using the protected administrative endpoints:
 
-Momentum activates Pro only after a verified Razorpay subscription event for the allow-listed Pro plan. The billing service can associate a subscription with a Google account using the payer email received from Razorpay. A signed webhook remains the source of truth for billing state.
+```http
+POST /admin/pro/grant
+POST /admin/pro/revoke
+```
+
+The browser never decides its own tier. `/auth/me` re-checks the current server-side access list and updates the operational customer record to match.
 
 ## Plan enforcement
 
-The private engine stores plan limits in its centralized D1 `plans` table. Result limits are enforced server-side by customer tier.
+The private engine stores plan limits in its centralized D1 `plans` table. Result limits, monthly quota, and rate limits are enforced server-side by customer tier.
 
 - **Free:** maximum 10 repositories per request.
 - **Pro:** maximum 25 repositories per request.
 
-The public API accepts the global parameter range supported by the server, but the customer's plan cap is the effective maximum. The response `meta.result_limit_cap` reports the active plan's cap.
+The public API accepts the global parameter range supported by the server, but the customer's plan cap is the effective maximum. Quota and rate-limit values are enforced centrally rather than trusting caller-supplied values.
 
-Quota and rate-limit values are enforced centrally rather than trusting caller-supplied values.
+## Data model
 
-## Pricing principle
+Free and Pro addresses are stored separately:
 
-Price around the value of reliable repository momentum data while preserving margin for upstream API usage, Cloudflare usage, support, and failed requests.
+```text
+google_free_accounts(email PRIMARY KEY)
+google_pro_accounts(email PRIMARY KEY)
+```
+
+An address is maintained in exactly one list.
 
 ## Important
 
