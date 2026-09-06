@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: Momentum API
-  version: 1.7.0
+  version: 1.8.0
   description: >-
-    Ranks GitHub repositories using developer activity, recency, community,
-    popularity, and historical star-growth signals.
+    GitHub momentum intelligence with Gmail-only browser access. Verified
+    Gmail accounts receive Free access automatically; Pro access is managed
+    separately by Gmail address. No payment provider is used.
 servers:
   - url: https://momentum-api-public.manikandanruki2004.workers.dev
 security:
@@ -17,17 +18,6 @@ paths:
       responses:
         '200':
           description: Service is healthy
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [status, service, engine, billing, auth]
-                properties:
-                  status: { type: string, example: ok }
-                  service: { type: string, example: momentum-api-public }
-                  engine: { type: string, example: service-binding }
-                  billing: { type: string, example: service-binding }
-                  auth: { type: string, example: service-binding }
   /version:
     get:
       security: []
@@ -35,37 +25,17 @@ paths:
       responses:
         '200':
           description: Version information
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/VersionResponse'
   /v1/me:
     get:
-      summary: Get authenticated customer account and usage summary
-      description: >-
-        Returns the authenticated customer's plan, effective result cap,
-        monthly usage, remaining monthly quota, and aggregate usage metrics.
-        API keys are never returned by this endpoint.
+      summary: Get authenticated API account and usage
       responses:
         '200':
           description: Account and usage summary
-          headers:
-            X-Request-Id:
-              schema: { type: string }
-            X-API-Version:
-              schema: { type: string, example: v1.7.0 }
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AccountResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
   /v1/momentum:
     get:
       summary: Rank GitHub repositories by momentum
-      description: >-
-        The public parameter accepts a limit from 1 to 20. The effective maximum
-        is additionally constrained by the authenticated customer's plan.
       parameters:
         - $ref: '#/components/parameters/Language'
         - $ref: '#/components/parameters/MinStars'
@@ -74,35 +44,11 @@ paths:
       responses:
         '200':
           description: Ranked repositories
-          headers:
-            X-Request-Id:
-              schema: { type: string }
-            X-API-Version:
-              schema: { type: string, example: v1.7.0 }
-            X-Query-Cache:
-              schema: { type: string, enum: [hit, miss] }
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MomentumResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '429':
           $ref: '#/components/responses/RateOrQuotaExceeded'
         '502':
-          $ref: '#/components/responses/UpstreamError'
-  /billing/health:
-    get:
-      security: []
-      summary: Billing binding health
-      responses:
-        '200':
-          description: Billing worker is reachable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceHealthResponse'
-        '503':
           $ref: '#/components/responses/UpstreamError'
   /auth/health:
     get:
@@ -110,106 +56,32 @@ paths:
       summary: Authentication binding health
       responses:
         '200':
-          description: Authentication worker is reachable
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ServiceHealthResponse'
-        '503':
-          $ref: '#/components/responses/UpstreamError'
-  /billing/checkout:
-    post:
-      summary: Create or reuse the authenticated customer's Pro checkout
-      responses:
-        '201':
-          description: New Razorpay checkout created
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CheckoutResponse'
-        '200':
-          description: Existing active checkout reused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CheckoutResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '502':
-          $ref: '#/components/responses/UpstreamError'
-        '504':
-          description: Razorpay timed out
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-  /billing/status:
-    get:
-      summary: Reconcile the authenticated customer's Razorpay subscription status
-      description: >-
-        Reads the linked Razorpay subscription through the billing provider adapter.
-        Entitlement changes are synchronized only from provider state; a browser
-        redirect is not treated as proof of payment.
-      responses:
-        '200':
-          description: Current provider status and local account state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BillingStatusResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '502':
-          $ref: '#/components/responses/UpstreamError'
-        '504':
-          description: Razorpay status lookup timed out or was temporarily unavailable
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-  /billing/claim:
-    post:
-      summary: Claim a pending Razorpay subscription for the signed-in account
-      responses:
-        '200':
-          description: Subscription linked or activated
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ClaimResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '404':
-          $ref: '#/components/responses/NotFound'
+          description: Authentication service is healthy
   /auth/config:
     get:
       security: []
       summary: Get public Google sign-in configuration
       responses:
         '200':
-          description: Public authentication configuration
+          description: Google configuration
   /auth/google:
     post:
       security: []
-      summary: Exchange a Google credential for a Momentum session
+      summary: Exchange a verified Google credential for a Momentum session
+      description: Verified @gmail.com accounts are automatically placed in Free access unless the email is in the Pro access list.
       responses:
         '200':
           description: Authenticated session created
-        '400':
-          description: Invalid credential
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Non-Gmail account
         '429':
           $ref: '#/components/responses/RateOrQuotaExceeded'
   /auth/me:
     get:
-      summary: Get authenticated browser account state
+      summary: Get authenticated browser account and effective tier
       responses:
         '200':
-          description: Authenticated account state
+          description: Account state
         '401':
           $ref: '#/components/responses/Unauthorized'
   /auth/logout:
@@ -218,33 +90,42 @@ paths:
       responses:
         '200':
           description: Session revoked
-  /webhooks/razorpay:
+  /admin/pro/grant:
     post:
-      security: []
-      summary: Receive and verify Razorpay subscription events
-      description: >-
-        The webhook must contain a valid Razorpay signature and event ID. Event
-        processing is deduplicated and ordered before entitlement changes are applied.
+      security:
+        - AdminSecret: []
+      summary: Grant Pro access to a Gmail address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GmailRequest'
       responses:
         '200':
-          description: Event processed
+          description: Pro access granted
         '400':
-          description: Malformed or missing event metadata
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '401':
-          description: Invalid webhook signature
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '500':
-          description: Event processing failed and should be retried by the provider
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ErrorResponse' }
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /admin/pro/revoke:
+    post:
+      security:
+        - AdminSecret: []
+      summary: Revoke Pro access and return a Gmail address to Free
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GmailRequest'
+      responses:
+        '200':
+          description: Pro access revoked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 components:
   securitySchemes:
     ApiKeyAuth:
@@ -252,19 +133,20 @@ components:
       in: header
       name: X-API-Key
       description: Customer API key. Authorization: Bearer is also accepted.
+    AdminSecret:
+      type: apiKey
+      in: header
+      name: X-Admin-Secret
   parameters:
     Language:
       name: language
       in: query
-      required: false
       schema:
         type: string
         maxLength: 64
-      description: Optional GitHub language filter.
     MinStars:
       name: min_stars
       in: query
-      required: false
       schema:
         type: integer
         minimum: 0
@@ -273,7 +155,6 @@ components:
     MaxAgeDays:
       name: max_age_days
       in: query
-      required: false
       schema:
         type: integer
         minimum: 1
@@ -282,150 +163,20 @@ components:
     Limit:
       name: limit
       in: query
-      required: false
       schema:
         type: integer
         minimum: 1
         maximum: 20
         default: 5
-      description: Requested result count; the authenticated plan may impose a lower cap.
   schemas:
-    ServiceHealthResponse:
+    GmailRequest:
       type: object
+      required: [email]
       properties:
-        status: { type: string, example: ok }
-        service: { type: string }
-        release: { type: string }
-      required: [status, service]
-    CheckoutResponse:
-      type: object
-      required: [status, checkout_url]
-      properties:
-        status: { type: string, example: created }
-        subscription_id: { type: string, example: sub_123abc }
-        checkout_url: { type: string, format: uri, example: https://rzp.io/i/example }
-        reused: { type: boolean }
-    BillingStatusResponse:
-      type: object
-      required: [status, tier, active, synchronized, request_id]
-      properties:
-        status: { type: string, example: active }
-        subscription_id: { type: string }
-        razorpay_customer_id: { type: [string, 'null'] }
-        tier: { type: string, enum: [free, pro] }
-        active: { type: boolean }
-        synchronized: { type: boolean }
-        request_id: { type: string }
-    ClaimResponse:
-      type: object
-      required: [status, customer_id, subscription_id, tier, active]
-      properties:
-        status: { type: string, enum: [activated, linked] }
-        customer_id: { type: string }
-        subscription_id: { type: string }
-        tier: { type: string, example: pro }
-        active: { type: boolean }
-    MomentumResponse:
-      type: object
-      required: [data, meta]
-      properties:
-        data:
-          type: array
-          items:
-            $ref: '#/components/schemas/MomentumRepository'
-        meta:
-          $ref: '#/components/schemas/Meta'
-    MomentumRepository:
-      type: object
-      required:
-        - repository
-        - stars
-        - forks
-        - commits_28d
-        - commits_28d_capped
-        - momentum_score
-        - momentum_level
-        - momentum_data_status
-      properties:
-        repository: { type: string, example: anthropics/skills }
-        stars: { type: integer, minimum: 0 }
-        forks: { type: integer, minimum: 0 }
-        commits_28d: { type: integer, minimum: 0, maximum: 500 }
-        commits_28d_capped: { type: boolean }
-        stars_7d: { type: [integer, 'null'] }
-        stars_28d: { type: [integer, 'null'] }
-        star_velocity_7d: { type: [number, 'null'] }
-        star_velocity_28d: { type: [number, 'null'] }
-        star_growth_rate_7d: { type: [number, 'null'] }
-        snapshot_7d_at: { type: [string, 'null'], format: date-time }
-        snapshot_28d_at: { type: [string, 'null'], format: date-time }
-        momentum_score: { type: number, minimum: 0, maximum: 100 }
-        momentum_level:
+        email:
           type: string
-          enum: [low, medium, high]
-        momentum_data_status:
-          type: string
-          enum: [warming_up, historical]
-    Meta:
-      type: object
-      required:
-        - count
-        - tier
-        - request_id
-        - activity_window_days
-        - star_velocity_windows_days
-        - commit_count_cap
-        - result_limit_cap
-        - activity_source
-        - query_cache
-      properties:
-        count: { type: integer, minimum: 0, maximum: 20 }
-        tier: { type: string, enum: [free, starter, pro] }
-        request_id: { type: string }
-        activity_window_days: { type: integer, example: 28 }
-        star_velocity_windows_days:
-          type: array
-          items: { type: integer }
-          example: [7, 28]
-        commit_count_cap: { type: integer, example: 500 }
-        result_limit_cap: { type: integer, minimum: 1, maximum: 20, example: 5 }
-        activity_source:
-          type: string
-          example: background_cache_with_live_fallback
-        query_cache:
-          type: string
-          enum: [hit, miss]
-    AccountResponse:
-      type: object
-      required: [customer, plan, usage]
-      properties:
-        customer:
-          type: object
-          required: [id, name, tier, active, api_key_prefix]
-          properties:
-            id: { type: string, example: cus_123 }
-            name: { type: string, example: My App }
-            tier: { type: string, enum: [free, starter, pro] }
-            active: { type: boolean }
-            api_key_prefix: { type: [string, 'null'], example: mk_live_AbCdEfGh }
-        plan:
-          type: object
-          required: [monthly_quota, monthly_usage, remaining_requests, rate_limit_per_minute, max_results, usage_month]
-          properties:
-            monthly_quota: { type: integer, minimum: 0 }
-            monthly_usage: { type: integer, minimum: 0 }
-            remaining_requests: { type: integer, minimum: 0 }
-            rate_limit_per_minute: { type: integer, minimum: 1 }
-            max_results: { type: integer, minimum: 1, maximum: 20 }
-            usage_month: { type: string, pattern: '^\\d{4}-\\d{2}$', example: '2026-08' }
-        usage:
-          type: object
-          required: [requests, successful, failed, average_latency_ms]
-          properties:
-            requests: { type: integer, minimum: 0 }
-            successful: { type: integer, minimum: 0 }
-            failed: { type: integer, minimum: 0 }
-            average_latency_ms: { type: number, minimum: 0 }
+          format: email
+          pattern: '^[^\\s@]+@gmail\\.com$'
     ErrorResponse:
       type: object
       required: [error]
@@ -437,18 +188,19 @@ components:
             code: { type: string }
             message: { type: string }
             request_id: { type: string }
-    VersionResponse:
-      type: object
-      required: [name, version, engine, billing, auth]
-      properties:
-        name: { type: string, example: Momentum API }
-        version: { type: string, example: 1.7.0 }
-        engine: { type: string, example: 1.3.1 }
-        billing: { type: string, example: 1.3.1 }
-        auth: { type: string, example: 1.2.0 }
   responses:
     Unauthorized:
-      description: API key or browser session missing or invalid
+      description: Authentication required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Administrative authorization required
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
@@ -459,16 +211,6 @@ components:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
     UpstreamError:
       description: Upstream dependency unavailable
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    Conflict:
-      description: Request conflicts with current account or subscription state
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    NotFound:
-      description: Requested subscription or resource was not found
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorResponse' }
