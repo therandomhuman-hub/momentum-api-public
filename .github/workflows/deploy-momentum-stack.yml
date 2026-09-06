@@ -186,9 +186,9 @@ jobs:
           BASE_URL="https://momentum-api-public.manikandanruki2004.workers.dev"
           request(){ curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$@"; }
           request "$BASE_URL/health" | tee /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding-ok" and .auth == "service-binding-ok" and .access == "gmail-free" and .usage == "100-per-month" and .rate_limit_per_minute == 10 and .max_results == 10' /tmp/health.json >/dev/null
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding-ok" and .auth == "service-binding-ok" and .access == "gmail-free" and .usage == "unlimited" and .rate_limit_per_minute == 10 and .max_results == 20' /tmp/health.json >/dev/null
           request "$BASE_URL/version" | tee /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "3.0.0" and .engine == "1.4.0" and .auth == "3.0.0" and .access == "gmail-free" and .usage == "100-per-month" and .max_results == 10' /tmp/version.json >/dev/null
+          jq -e '.name == "Momentum API" and .version == "3.1.0" and .engine == "1.4.0" and .auth == "3.0.0" and .access == "gmail-free" and .usage == "unlimited" and .max_results == 20' /tmp/version.json >/dev/null
           STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/health")"
           test "$STATUS" = "200"
           jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-free"' /tmp/auth-health.json >/dev/null
