@@ -35,22 +35,24 @@ type CircuitState = {
   probeInFlight: boolean;
 };
 
+type CircuitPermit = "normal" | "probe" | "blocked";
+
 const READ_FAILURE_THRESHOLD = 3;
 const READ_OPEN_MS = 5000;
 
 class ReadCircuitBreaker {
   private readonly state: CircuitState = { failures: 0, openUntil: 0, probeInFlight: false };
 
-  permit() {
+  permit(): CircuitPermit {
     const now = Date.now();
     const open = this.state.openUntil > now;
-    if (open) return false;
+    if (open) return "blocked";
     if (this.state.openUntil !== 0) {
-      if (this.state.probeInFlight) return false;
+      if (this.state.probeInFlight) return "blocked";
       this.state.probeInFlight = true;
-      return true;
+      return "probe";
     }
-    return true;
+    return "normal";
   }
 
   success() {
@@ -91,9 +93,14 @@ export class RazorpayProvider implements BillingProvider {
   }
 
   private async request(url: string, init: RequestInit, retryableRead = false): Promise<ProviderResult> {
-    if (retryableRead && !this.readCircuit.permit()) return { ok: false, status: 503, data: { error: { code: "PROVIDER_CIRCUIT_OPEN" } } };
+    let permit: CircuitPermit = "normal";
+    if (retryableRead) {
+      permit = this.readCircuit.permit();
+      if (permit === "blocked") return { ok: false, status: 503, data: { error: { code: "PROVIDER_CIRCUIT_OPEN" } } };
+    }
+
     const auth = btoa(`${this.keyId}:${this.keySecret}`);
-    const maxAttempts = retryableRead ? 3 : 1;
+    const maxAttempts = retryableRead ? (permit === "probe" ? 1 : 3) : 1;
     const attemptTimeoutMs = retryableRead ? this.readTimeoutMs : this.timeoutMs;
     let lastResult: ProviderResult = { ok: false, status: 503, data: { error: { code: "PROVIDER_UNAVAILABLE" } } };
 
