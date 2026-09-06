@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - 'worker/**'
-      - 'billing/**'
       - 'auth/**'
       - 'worker/migrations/**'
       - '.github/workflows/deploy-momentum-stack.yml'
@@ -19,9 +18,11 @@ on:
 
 permissions:
   contents: read
+
 concurrency:
   group: momentum-stack-production
   cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -30,6 +31,7 @@ jobs:
       - name: Checkout public gateway
         uses: actions/checkout@v7
         with: { persist-credentials: false }
+
       - name: Checkout private engine
         uses: actions/checkout@v7
         with:
@@ -38,6 +40,7 @@ jobs:
           ref: ${{ inputs.private_engine_ref || 'main' }}
           path: _private-engine
           persist-credentials: false
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -45,33 +48,33 @@ jobs:
           cache: npm
           cache-dependency-path: |
             worker/package.json
-            billing/package.json
             auth/package.json
             _private-engine/worker/package.json
+
       - name: Install gateway dependencies
         working-directory: worker
         run: npm install --no-audit --no-fund
-      - name: Install billing dependencies
-        working-directory: billing
-        run: npm install --no-audit --no-fund
+
       - name: Install auth dependencies
         working-directory: auth
         run: npm install --no-audit --no-fund
+
       - name: Install engine dependencies
         working-directory: _private-engine/worker
         run: npm install --no-audit --no-fund
+
       - name: Typecheck gateway
         working-directory: worker
         run: npm run typecheck
-      - name: Typecheck billing
-        working-directory: billing
-        run: npm run typecheck
+
       - name: Typecheck auth
         working-directory: auth
         run: npm run typecheck
+
       - name: Typecheck engine
         working-directory: _private-engine/worker
         run: npm run typecheck
+
       - name: Provision Cloudflare D1 and KV
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -110,38 +113,29 @@ jobs:
           base.workers_dev = true;
           fs.writeFileSync('wrangler.deploy.json', JSON.stringify(base, null, 2));
           NODE
-      - name: Sync billing migrations into engine checkout
+
+      - name: Sync D1 migrations into engine checkout
         run: |
           set -euo pipefail
-          for migration in \
-            0008_razorpay_billing.sql \
-            0009_razorpay_event_ordering.sql \
-            0010_razorpay_current_subscription.sql \
-            0011_razorpay_subscription_state_machine.sql \
-            0012_public_subscription_claims.sql \
-            0013_google_auth.sql \
-            0014_free_plan_10_results.sql \
-            0015_razorpay_payer_email.sql \
-            0016_razorpay_checkout_attempts.sql \
-            0017_auth_rate_limit.sql \
-            0018_billing_entitlement_sync_triggers.sql \
-            0019_rebuild_billing_entitlement_sync_triggers.sql \
-            0020_rebuild_billing_entitlement_active_state.sql; do
-            test -f "worker/migrations/$migration"
-            cp "worker/migrations/$migration" "_private-engine/worker/migrations/$migration"
+          mkdir -p _private-engine/worker/migrations
+          for migration in worker/migrations/*.sql; do
+            cp "$migration" "_private-engine/worker/migrations/$(basename "$migration")"
           done
+
       - name: Apply engine D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: _private-engine/worker
         run: npx --yes wrangler@4.129.0 d1 migrations apply momentum-production --remote --config wrangler.deploy.json
+
       - name: Deploy private engine
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: _private-engine/worker
         run: npx --yes wrangler@4.129.0 deploy --config wrangler.deploy.json
+
       - name: Install private Worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -155,45 +149,7 @@ jobs:
           printf '%s' "$MOMENTUM_GITHUB_TOKEN" | npx --yes wrangler@4.129.0 secret put GITHUB_TOKEN --config wrangler.deploy.json
           printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
           printf '%s' "$MOMENTUM_ADMIN_SECRET" | npx --yes wrangler@4.129.0 secret put ADMIN_SECRET --config wrangler.deploy.json
-      - name: Create billing Worker config
-        working-directory: billing
-        run: |
-          set -euo pipefail
-          DB_ID="$(cat "$GITHUB_WORKSPACE/.momentum_db_id")"
-          node - "$DB_ID" <<'NODE'
-          const fs = require('fs');
-          fs.writeFileSync('wrangler.deploy.json', JSON.stringify({ name:'momentum-billing', main:'src/index.ts', compatibility_date:'2026-08-25', workers_dev:true, observability:{enabled:true}, d1_databases:[{binding:'DB',database_name:'momentum-production',database_id:process.argv[2]}] }, null, 2));
-          NODE
-      - name: Deploy billing Worker
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        working-directory: billing
-        run: npx --yes wrangler@4.129.0 deploy --config wrangler.deploy.json
-      - name: Install billing Worker secrets
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
-          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
-          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
-          RAZORPAY_TEST_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_TEST_WEBHOOK_SECRET }}
-          RAZORPAY_PRO_PLAN_ID: ${{ secrets.RAZORPAY_PRO_PLAN_ID }}
-          RAZORPAY_TEST_PRO_PLAN_ID: ${{ secrets.RAZORPAY_TEST_PRO_PLAN_ID }}
-          MOMENTUM_API_KEY_PEPPER: ${{ secrets.MOMENTUM_API_KEY_PEPPER }}
-        working-directory: billing
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$RAZORPAY_KEY_ID"
-          test -n "$RAZORPAY_KEY_SECRET"
-          if [ -n "$RAZORPAY_WEBHOOK_SECRET" ]; then printf '%s' "$RAZORPAY_WEBHOOK_SECRET" | npx --yes wrangler@4.129.0 secret put RAZORPAY_WEBHOOK_SECRET --config wrangler.deploy.json; fi
-          if [ -n "$RAZORPAY_TEST_WEBHOOK_SECRET" ]; then printf '%s' "$RAZORPAY_TEST_WEBHOOK_SECRET" | npx --yes wrangler@4.129.0 secret put RAZORPAY_TEST_WEBHOOK_SECRET --config wrangler.deploy.json; fi
-          if [ -n "$RAZORPAY_PRO_PLAN_ID" ]; then printf '%s' "$RAZORPAY_PRO_PLAN_ID" | npx --yes wrangler@4.129.0 secret put RAZORPAY_PRO_PLAN_ID --config wrangler.deploy.json; fi
-          if [ -n "$RAZORPAY_TEST_PRO_PLAN_ID" ]; then printf '%s' "$RAZORPAY_TEST_PRO_PLAN_ID" | npx --yes wrangler@4.129.0 secret put RAZORPAY_TEST_PRO_PLAN_ID --config wrangler.deploy.json; fi
-          printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
-          printf '%s' "$RAZORPAY_KEY_ID" | npx --yes wrangler@4.129.0 secret put RAZORPAY_KEY_ID --config wrangler.deploy.json
-          printf '%s' "$RAZORPAY_KEY_SECRET" | npx --yes wrangler@4.129.0 secret put RAZORPAY_KEY_SECRET --config wrangler.deploy.json
+
       - name: Create Google auth Worker config
         working-directory: auth
         run: |
@@ -203,91 +159,60 @@ jobs:
           const fs = require('fs');
           fs.writeFileSync('wrangler.deploy.json', JSON.stringify({ name:'momentum-auth', main:'src/index.ts', compatibility_date:'2026-08-25', workers_dev:true, observability:{enabled:true}, triggers:{crons:['0 * * * *']}, d1_databases:[{binding:'DB',database_name:'momentum-production',database_id:process.argv[2]}] }, null, 2));
           NODE
+
       - name: Deploy Google auth Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         working-directory: auth
         run: npx --yes wrangler@4.129.0 deploy --config wrangler.deploy.json
+
       - name: Install Google auth Worker secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           MOMENTUM_API_KEY_PEPPER: ${{ secrets.MOMENTUM_API_KEY_PEPPER }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          MOMENTUM_ADMIN_SECRET: ${{ secrets.MOMENTUM_ADMIN_SECRET }}
         working-directory: auth
         shell: bash
         run: |
           set -euo pipefail
           test -n "$GOOGLE_CLIENT_ID"
+          test -n "$MOMENTUM_ADMIN_SECRET"
           printf '%s' "$MOMENTUM_API_KEY_PEPPER" | npx --yes wrangler@4.129.0 secret put API_KEY_PEPPER --config wrangler.deploy.json
           printf '%s' "$GOOGLE_CLIENT_ID" | npx --yes wrangler@4.129.0 secret put GOOGLE_CLIENT_ID --config wrangler.deploy.json
+          printf '%s' "$MOMENTUM_ADMIN_SECRET" | npx --yes wrangler@4.129.0 secret put ADMIN_SECRET --config wrangler.deploy.json
+
       - name: Deploy public gateway
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          RAZORPAY_SUBSCRIPTION_URL: ${{ vars.RAZORPAY_SUBSCRIPTION_URL }}
         working-directory: worker
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -n "$RAZORPAY_SUBSCRIPTION_URL"
-          case "$RAZORPAY_SUBSCRIPTION_URL" in
-            https://rzp.io/*|https://pages.razorpay.com/*) ;;
-            *) echo "RAZORPAY_SUBSCRIPTION_URL must be a Razorpay hosted URL"; exit 1 ;;
-          esac
-          npx --yes wrangler@4.129.0 deploy --var "RAZORPAY_SUBSCRIPTION_URL:${RAZORPAY_SUBSCRIPTION_URL}"
+        run: npx --yes wrangler@4.129.0 deploy
+
       - name: Smoke test public gateway
         shell: bash
         run: |
           set -euo pipefail
           BASE_URL="https://momentum-api-public.manikandanruki2004.workers.dev"
           check_status() { [ "$1" = "$2" ] || { echo "Expected HTTP $2, got $1"; exit 1; }; }
-          get_json() { curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 3 "$1"; }
-          get_status() { curl --connect-timeout 10 --max-time 30 --silent --show-error --output "$2" --write-out '%{http_code}' --retry 5 --retry-delay 3 "$1"; }
+          request() { curl --connect-timeout 10 --max-time 30 --fail-with-body --silent --show-error --retry 5 --retry-delay 2 "$@"; }
           echo "== health =="
-          get_json "$BASE_URL/health" | tee /tmp/health.json
-          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .billing == "service-binding" and .auth == "service-binding"' /tmp/health.json >/dev/null
+          request "$BASE_URL/health" | tee /tmp/health.json
+          jq -e '.status == "ok" and .service == "momentum-api-public" and .engine == "service-binding" and .auth == "service-binding" and .access == "gmail"' /tmp/health.json >/dev/null
           echo "== version =="
-          get_json "$BASE_URL/version" | tee /tmp/version.json
-          jq -e '.name == "Momentum API" and .version == "1.7.0" and .billing == "1.3.1" and .auth == "1.2.0"' /tmp/version.json >/dev/null
-          echo "== billing health =="
-          BILLING_HEALTH_STATUS="$(get_status "$BASE_URL/billing/health" /tmp/billing-health.json)"
-          echo "HTTP $BILLING_HEALTH_STATUS"; cat /tmp/billing-health.json; echo
-          check_status "$BILLING_HEALTH_STATUS" "200"
-          jq -e '.status == "ok" and .service == "momentum-billing"' /tmp/billing-health.json >/dev/null
+          request "$BASE_URL/version" | tee /tmp/version.json
+          jq -e '.name == "Momentum API" and .version == "1.8.0" and .access == "gmail"' /tmp/version.json >/dev/null
           echo "== auth health =="
-          AUTH_HEALTH_STATUS="$(get_status "$BASE_URL/auth/health" /tmp/auth-health.json)"
-          echo "HTTP $AUTH_HEALTH_STATUS"; cat /tmp/auth-health.json; echo
-          check_status "$AUTH_HEALTH_STATUS" "200"
-          jq -e '.status == "ok" and .service == "momentum-auth"' /tmp/auth-health.json >/dev/null
-          echo "== auth credential validation =="
-          AUTH_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-check.json --write-out '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' "$BASE_URL/auth/google")"
-          echo "HTTP $AUTH_STATUS"; cat /tmp/auth-check.json; echo
-          check_status "$AUTH_STATUS" "401"
-          jq -e '.error.code == "INVALID_CREDENTIAL" and (.error.request_id | startswith("req_"))' /tmp/auth-check.json >/dev/null
-          echo "== protected billing boundary =="
-          BILLING_STATUS="$(get_status "$BASE_URL/billing/status" /tmp/billing-status.json)"
-          echo "HTTP $BILLING_STATUS"; cat /tmp/billing-status.json; echo
-          check_status "$BILLING_STATUS" "401"
-          jq -e '(.error.code == "UNAUTHORIZED" or .error.code == "SERVICE_UNAVAILABLE") and (.error.request_id | startswith("req_"))' /tmp/billing-status.json >/dev/null
-          echo "== invalid query validation =="
-          QUERY_STATUS="$(get_status "$BASE_URL/rankings?limit=0" /tmp/query-check.json)"
-          echo "HTTP $QUERY_STATUS"; cat /tmp/query-check.json; echo
-          check_status "$QUERY_STATUS" "400"
-          jq -e '.error.code == "INVALID_LIMIT" and (.error.request_id | startswith("req_"))' /tmp/query-check.json >/dev/null
-          echo "== method boundary =="
-          METHOD_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/method-check.json --write-out '%{http_code}' -X DELETE "$BASE_URL/health")"
-          echo "HTTP $METHOD_STATUS"; cat /tmp/method-check.json; echo
-          check_status "$METHOD_STATUS" "405"
-          jq -e '.error.code == "METHOD_NOT_ALLOWED" and (.error.request_id | startswith("req_"))' /tmp/method-check.json >/dev/null
-          echo "== webhook boundary =="
-          WEBHOOK_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/webhook-check.json --write-out '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' "$BASE_URL/billing/webhook")"
-          echo "HTTP $WEBHOOK_STATUS"; cat /tmp/webhook-check.json; echo
-          check_status "$WEBHOOK_STATUS" "401"
-          jq -e '(.error.code == "UNAUTHORIZED" or .error.code == "WEBHOOK_SECRET_MISSING") and (.error.request_id | startswith("req_"))' /tmp/webhook-check.json >/dev/null
-          echo "== checkout redirect =="
-          CHECKOUT_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/checkout-check.html --write-out '%{http_code}' -I "$BASE_URL/billing/checkout")"
-          echo "HTTP $CHECKOUT_STATUS"; cat /tmp/checkout-check.html; echo
-          check_status "$CHECKOUT_STATUS" "302"
-          grep -Eiq '^location: https://(rzp\.io|pages\.razorpay\.com)/' /tmp/checkout-check.html
-          grep -Eiq '^cache-control: no-store' /tmp/checkout-check.html
-          echo "Public Momentum stack smoke checks passed."
+          AUTH_STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/auth-health.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL/auth/health")"
+          check_status "$AUTH_STATUS" "200"
+          jq -e '.status == "ok" and .service == "momentum-auth" and .mode == "gmail-access"' /tmp/auth-health.json >/dev/null
+          echo "== protected boundaries =="
+          for path in /auth/me /v1/me /v1/momentum; do
+            STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/boundary.json --write-out '%{http_code}' --retry 5 --retry-delay 2 "$BASE_URL$path")"
+            check_status "$STATUS" "401"
+            jq -e '.error.code == "UNAUTHORIZED"' /tmp/boundary.json >/dev/null
+          done
+          echo "== invalid method =="
+          STATUS="$(curl --connect-timeout 10 --max-time 30 --silent --show-error --output /tmp/method.json --write-out '%{http_code}' --retry 5 --retry-delay 2 -X PUT "$BASE_URL/health")"
+          check_status "$STATUS" "405"
+          jq -e '.error.code == "METHOD_NOT_ALLOWED"' /tmp/method.json >/dev/null
