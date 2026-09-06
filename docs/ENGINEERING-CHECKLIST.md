@@ -1,123 +1,104 @@
 # Momentum Vibe Engineering Checklist
 
-This is the implementation checklist derived from the supplied engineering-block reference. It is specific to Momentum and is used as a release gate.
+This checklist applies the plan-first, small-slice, secure, reliable, observable engineering model to the standalone Gmail access version of Momentum.
 
 ## Plan and scope
 
 - [x] Core product slice is explicit.
-- [x] Architecture is documented before further structural changes.
-- [x] Every significant change has a written implementation plan or decision record.
-- [x] Non-core features are kept behind later delivery slices.
+- [x] Architecture is documented before structural changes.
+- [x] Significant changes have a written implementation plan or decision record.
+- [x] Non-core features remain behind later delivery slices.
 
 ## Project hygiene
 
 - [ ] Add lockfiles for each independently installed Node project and move CI from `npm install` to `npm ci`.
 - [x] Runtime configuration is kept outside source where supported by the platform.
-- [x] Provider secrets stay in platform/GitHub secret stores.
+- [x] Authentication/admin secrets stay in platform/GitHub secret stores.
 - [x] CI performs tracked-source secret-pattern scanning.
-
-## AI workflow
-
-- [x] Root `CLAUDE.md` contains durable AI/build rules.
-- [x] Architecture and decisions live in `docs/`.
-- [x] Reusable procedures live under `skills/` where they repeat.
 
 ## Structure
 
-- [x] Public gateway is separated from auth, billing, and engine services.
-- [ ] Split large service files into domain/provider/persistence modules.
-- [x] UI, API routing, business rules, and persistence have explicit ownership boundaries.
+- [x] Public gateway is separated from authentication and engine services.
+- [ ] Split remaining large service files into smaller domain/persistence modules.
+- [x] UI, API routing, access-control rules, and persistence have explicit ownership boundaries.
+- [x] Active payment-provider code and billing Worker have been removed.
 
 ## Data
 
 - [x] JSON remains the external API format.
-- [x] Relational billing/customer state uses D1.
+- [x] D1 stores operational customer/session/usage state.
 - [x] Schema changes are represented as ordered migrations.
-- [x] Multi-record entitlement transitions use D1 atomic batches where the transition requires consistency.
-- [x] D1 entitlement triggers derive customer paid/free state from the subscription source of truth.
-- [x] Lookup-heavy billing paths have indexes.
+- [x] Free and Pro Gmail access lists are stored in separate tables.
+- [x] Grant/revoke changes to both lists use atomic D1 batches.
+- [x] Gmail access is re-evaluated on authenticated account refresh.
+- [x] Legacy payment tables are removed by a forward migration; historical migrations remain immutable.
 - [ ] Audit the private engine for N+1 access patterns.
 - [x] NoSQL is not introduced without a demonstrated document-shaped requirement.
-- [x] Billing entitlement migrations are maintained in both public and private engine migration trees.
 
 ## Security
 
 - [x] HTTPS service endpoints are used in production.
 - [x] HSTS/security headers are checked in production health tests.
 - [x] Gateway query boundaries validate type, range, and length before forwarding.
-- [x] Auth JSON input validates content type, shape, size, and credential structure before verification.
+- [x] Auth JSON input validates content type, credential size, and credential structure before verification.
 - [x] Dynamic HTML in the public demo is escaped.
 - [x] Production CORS is explicit rather than wildcard.
 - [ ] Add SSRF defenses before introducing any user-supplied URL fetcher.
 - [x] Session and API credentials are never returned in full after issuance.
-- [x] Billing webhooks require signature verification.
+- [x] Google ID tokens require valid signature, issuer, audience, expiration, and verified email.
+- [x] Browser authentication accepts only normalized `@gmail.com` addresses.
+- [x] Pro grant/revoke requires the server-side admin secret.
 - [x] Authentication has IP-keyed brute-force throttling.
-- [x] Protected actions check authentication and account state.
+- [x] Protected actions check authentication and server-side access state.
 
 ## Reliability
 
-- [x] Provider failures are translated into safe user errors.
-- [x] Google signing-key fetches and binding health probes have bounded timeouts.
-- [x] Razorpay subscription creation has an 8-second provider timeout through the billing adapter.
-- [x] Provider subscription reads are behind the same billing adapter and have bounded timeouts.
-- [x] Retry-with-backoff is limited to the idempotent Razorpay subscription read path and capped at a small number of attempts.
-- [x] Retried subscription reads use a shorter per-attempt timeout so the full retry budget remains below the gateway's 8-second upstream deadline.
-- [x] Razorpay read failures now open a small bounded circuit breaker before repeated dependency calls continue.
-- [x] The read circuit allows only one half-open probe after cooldown, preventing a dependency recovery stampede.
-- [x] Provider event IDs are used for webhook deduplication.
-- [x] Existing-subscription webhook status and entitlement updates are committed atomically.
-- [x] New-subscription attachment uses an atomic subscription/customer transition and D1 entitlement triggers provide a database-level consistency guard.
-- [x] Checkout persistence failure cannot hide a successfully created Razorpay checkout URL.
-- [x] Concurrent checkout attempts use a D1-backed per-customer lease and can reuse an existing checkout URL.
+- [x] Google signing-key fetches and service-binding calls have bounded timeouts.
+- [x] Access-list grant/revoke operations use D1 atomic batches.
 - [ ] Audit remaining shared-state updates for races and make read/modify/write sequences atomic.
-- [x] Authenticated customers can request a bounded Razorpay subscription status refresh through `/billing/status`.
-- [x] Production billing secrets are synchronized by the primary deployment workflow instead of a separate autonomous repair workflow.
+- [x] Edge rate limiting protects authentication and public routes.
+- [x] Production deployment is serialized and fails on unhealthy critical routes.
 
 ## Performance
 
 - [x] Repository activity caching exists in the engine architecture.
 - [x] Result counts are bounded by the authenticated plan.
-- [x] Gateway applies explicit edge rate limits per client IP and route; account/user-specific limits remain enforced by the authenticated services.
-- [ ] Add stronger per-user limits at the public gateway once authentication identity is available before routing.
+- [x] Gateway applies explicit edge rate limits per client IP and route.
+- [ ] Add stronger per-user limits at the gateway once authentication identity is available before routing.
 - [ ] Add pagination to any future endpoint whose result set can grow without a hard cap.
 - [x] Non-critical refresh work has a background-job architecture in the engine.
+- [ ] Optimize engine N+1 behavior and upstream latency after observability is complete.
 
 ## Observability
 
 - [x] Public requests carry request IDs.
 - [x] Cloudflare Worker observability is enabled in deployment configuration.
-- [x] Billing binding health is monitored.
-- [x] Auth binding health is monitored.
+- [x] Gateway rate-limit rejections are logged with route, scope, and request ID.
 - [ ] Standardize structured JSON logging fields across all Workers.
 - [ ] Add centralized exception/error tracking with safe customer messages.
-- [x] Provider event IDs and request IDs are available in the billing incident trail.
-- [x] Gateway rate-limit rejections are logged with route, scope, and request ID.
+- [ ] Add operational audit events for Pro grants/revokes without logging admin secrets.
 
 ## Quality and shipping
 
-- [x] Typechecks run for core Workers during CI.
-- [x] Engineering-contract checks run in CI.
-- [x] Billing provider unit tests cover create, read, failure, malformed-id, timeout, and bounded-retry behavior.
-- [x] Integration-style health checks for binding-to-service paths.
-- [x] Playwright smoke coverage for the public demo and critical anonymous boundaries.
+- [x] Gateway/auth typechecks run during CI.
+- [x] Engineering-contract checks run during CI.
+- [x] D1 migration contract is checked in CI and deployment.
+- [x] Production health checks cover gateway/auth and retired payment routes.
+- [x] Deployment smoke tests verify Gmail access mode and protected route boundaries.
+- [x] Post-deploy production release gate verifies the deployed gateway, auth binding, security headers, and Gmail UI markers.
+- [ ] Add behavior tests for Free/Pro list transitions.
+- [ ] Add Playwright coverage for Gmail sign-in and live scan.
+- [ ] Add browser verification for Pro grant/revoke using a controlled test Gmail account.
 - [x] CI/CD deployment exists.
-- [x] Deployment smoke tests verify gateway version plus direct billing/auth binding health.
-- [x] Post-deploy production release gate verifies the deployed gateway, bindings, security headers, protected routes, and current browser UI markers.
-- [x] Production health endpoints exist for the gateway, billing, and auth services.
-- [x] A scheduled production smoke test fails when billing or auth is unavailable.
-- [x] Release contract validates the billing status route and gateway routing.
-- [x] CI validates the gateway rate-limit contract, webhook atomicity, ordered D1 migration contract, and authentication throttling contract.
-- [x] Production D1 migration runner is pinned, serialized, and validates the migration sequence before execution.
-- [x] Provider tests validate circuit opening after repeated read failures.
-- [x] Provider tests validate single-probe recovery behavior after circuit cooldown.
 
-## Provider abstraction
+## Access-control model
 
-- [x] Create a `BillingProvider` interface.
-- [x] Implement Razorpay behind the provider interface.
-- [x] Keep provider URLs out of presentation logic except for the validated hosted checkout destination.
-- [x] Keep subscription lookup behind the provider interface rather than direct external calls in route logic.
-- [ ] Make provider failover possible without changing the public API contract.
+- [x] Any verified Gmail account receives Free automatically.
+- [x] Pro access is represented by a separate Gmail allowlist.
+- [x] Free and Pro Gmail addresses cannot exist in both lists simultaneously.
+- [x] Client-supplied tier values are ignored for authorization.
+- [x] Existing sessions are re-checked against the current access list.
+- [x] Pro grant/revoke endpoints are server-authorized and POST-only.
 
 ## Browser verification
 
@@ -126,14 +107,12 @@ The critical browser journey is:
 ```text
 Open site
   -> Preview works
-  -> Sign in with Google
+  -> Sign in with Google using Gmail
+  -> Account resolves to Free or Pro
   -> Run live query
-  -> Click Upgrade
-  -> Obtain real Razorpay checkout URL
-  -> Complete/exit authorization
-  -> Return to Momentum
-  -> Refresh account state
-  -> Pro state reflects verified billing processing
+  -> Sign out
+  -> Sign in again
+  -> Current access-list tier is reflected
 ```
 
 A build is not complete merely because TypeScript compiles. The browser path and the real service-binding path must be exercised.
@@ -144,4 +123,4 @@ A production release should satisfy:
 
 `plan -> validate -> test -> browser smoke -> deploy -> binding health -> live verification`
 
-The post-deploy gate is implemented in `.github/workflows/release-gate.yml`. A successful deploy is not treated as fully released until the gate passes.
+The post-deploy gate is implemented in `.github/workflows/release-gate.yml`. It verifies the Gmail access model and confirms retired payment routes are no longer exposed.
