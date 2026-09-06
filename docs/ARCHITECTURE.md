@@ -1,12 +1,12 @@
-# Momentum API — Architecture v2
+# Momentum API — Architecture v3
 
-This document turns the 47-block engineering model from the supplied reference into concrete rules for Momentum. The reference emphasizes planning before code, a small useful slice, modularity, separation of UI/logic/data, safe data changes, security, reliability, performance, observability, automated shipping, provider adapters, browser tests, and reusable AI rules.
+This architecture applies the plan-first, small-slice, modular, secure, reliable, observable engineering model to Momentum.
 
 ## 1. Product boundary
 
-Momentum has one clear core job: return ranked GitHub repository momentum data. Everything else supports that path: Google authentication, usage limits, Pro billing, data freshness, and developer access.
+Momentum has one core job: return ranked GitHub repository momentum data. Supporting capabilities are Google authentication, access control, quotas, usage tracking, data freshness, and developer API access.
 
-The public demo is a UI client. It does not contain secrets or business rules. The public gateway exposes a stable HTTP contract and delegates domain responsibilities to dedicated Workers.
+There is no payment provider in the active product. Browser access is Gmail-only. Every verified `@gmail.com` account is automatically Free. Pro is granted or revoked by a server-side Gmail access list.
 
 ## 2. Runtime topology
 
@@ -18,120 +18,106 @@ Browser / SDK
 | momentum-api-public       |
 | public API gateway        |
 +---------------------------+
-   |          |          |
-   |          |          +-------------------+
-   |          v                              |
-   |   momentum-auth                         |
-   |                                        |
-   v                                        v
-momentum-engine                      momentum-billing
-ranking + quotas                     subscriptions + webhooks
-   |                                        |
-   +--> GitHub                             +--> Razorpay
-   +--> D1                                  |
-   +--> KV                                  +--> D1
+      |             |
+      v             v
+momentum-auth   momentum-engine
+Google identity  ranking + quotas
+sessions         usage + caching
+access lists     GitHub access
+      |             |
+      +------ D1 --+---- KV
 ```
 
-The gateway owns routing, CORS policy, request IDs, safe error translation, and binding-level health checks. It does not own billing state or ranking logic.
+The gateway owns routing, CORS policy, request IDs, safe error translation, rate-limit boundaries, and service-binding health checks. It does not own authorization lists or ranking logic.
 
 ## 3. Layers
 
 ### Presentation
-`demo/` contains the browser application. It talks to the public gateway only. Rendering and interaction code should not directly know database schemas or provider internals.
+`demo/` contains the browser application. It talks only to the public gateway. It does not contain secrets or access-control authority.
 
 ### Gateway
-`worker/` is a thin adapter layer. It validates method/path combinations, adds request context, calls the appropriate service binding, and maps failures to safe responses.
+`worker/` is a thin adapter layer. It validates method/path combinations, adds request context, calls the authentication or engine service, and maps failures to safe responses.
 
 ### Domain services
-- `auth/`: identity verification, session creation, customer provisioning.
-- `billing/`: subscription creation, webhook verification, entitlement transitions.
-- private `momentum-engine`: repository ranking, quotas, usage, GitHub access, caching, background refresh.
+- `auth/`: verifies Google identity, enforces Gmail-only access, creates sessions, and manages the separate Free/Pro Gmail access lists.
+- private `momentum-engine`: repository ranking, quotas, usage, GitHub access, caching, and background refresh.
 
 ### Persistence
-D1 stores relational business state. Migrations are the only schema-change mechanism. KV is for bounded, cache-like or rate-limit state.
+D1 stores relational customer/session/access/usage state. Migrations are the only schema-change mechanism. KV is used for cache-like or rate-limit state.
 
-## 4. Critical invariants
+## 4. Access-control invariants
 
-1. A Google identity is linked to one Momentum customer.
-2. A billing event can be retried without granting duplicate entitlement.
-3. Only an allow-listed Pro plan can produce Pro access.
-4. A successful Razorpay subscription creation must return the provider checkout URL even if best-effort local persistence has a temporary failure; later webhook processing reconciles state.
-5. Terminal billing events remove the paid entitlement.
-6. The browser never receives secrets, internal stack traces, or database details.
-7. A deployment is not considered healthy until each service binding and each critical public route has passed smoke verification.
-8. Production runtime secrets are owned and synchronized by the primary deployment workflow; post-deploy secret mutation is not part of the normal release path.
+1. A verified Gmail identity maps to one Momentum customer account.
+2. Non-Gmail Google identities cannot obtain browser access.
+3. A Gmail address is stored in exactly one access list: Free or Pro.
+4. Pro authorization is derived from the server-side Pro Gmail access list, never from browser state.
+5. Granting Pro removes the address from the Free access list.
+6. Revoking Pro places the address in the Free access list.
+7. Existing sessions are re-authorized against the current access list on `/auth/me`.
+8. The browser never receives admin credentials or internal database details.
 
-## 5. Billing state machine
+## 5. Data model direction
+
+The two access tables are intentionally simple:
 
 ```text
-created
-  |
-  v
-authenticated / pending
-  |
-  +--> active ------> paused/pending/halted ------> active
-  |
-  +--> cancelled/completed/expired
+google_free_accounts
+  email PRIMARY KEY
+
+google_pro_accounts
+  email PRIMARY KEY
 ```
 
-Momentum entitlement is derived from verified provider events, not from a browser claim. The email/customer matching path exists as a reconciliation aid, not as authority to bypass webhook verification.
+Customer rows remain necessary for engine quotas, usage, sessions, and API-key compatibility. The Gmail address is the identity key used to choose the effective tier.
 
-## 6. Data model direction
+Legacy payment/subscription tables are removed by the standalone access migration. Historical migration files remain immutable because applied migrations are part of the database history.
 
-Keep mutable facts in one table and connect related records with identifiers. Billing uses a durable internal customer ID plus Razorpay identifiers. Unclaimed subscription records exist only as a reconciliation buffer until they can be safely attached to a customer.
+## 6. Security
 
-Frequent access paths require indexes, especially:
-- customer email lookup;
-- subscription ID lookup;
-- Razorpay customer ID lookup;
-- current subscription lookup by Momentum customer;
-- webhook event ID lookup.
+- Verify Google issuer, audience, signature, expiration, and `email_verified`.
+- Accept only normalized `@gmail.com` addresses for browser authentication.
+- Keep Pro grant/revoke behind the server-side admin secret and POST-only endpoints.
+- Apply authentication brute-force throttling and edge rate limits.
+- Keep CORS origin allow-listed.
+- Escape dynamic HTML in the browser.
+- Never expose secrets, session tokens after issuance, or admin credentials.
 
-## 7. Reliability policy
+## 7. Reliability
 
-Outbound calls use bounded timeouts. Retries are restricted to operations that are safe to repeat and use backoff. Repeated dependency failure should be contained rather than amplified. Shared state updates that can race are made atomic.
+All outbound network calls use bounded timeouts. Retries are restricted to safe/idempotent operations. Database changes that can race use atomic operations or transactions.
 
-For billing specifically:
-- create-subscription is treated as a remote mutation;
-- local persistence after remote creation is not allowed to erase a valid provider checkout result;
-- webhook processing is idempotent by provider event ID;
-- entitlement updates are derived from ordered provider events.
+The Google signing-key fetch is bounded. Service-binding calls are bounded. Access-list grant/revoke operations update related records atomically.
 
-## 8. Performance policy
+## 8. Performance
 
-Live ranking should prefer cached activity where correctness permits. Expensive refresh work belongs in background jobs. Public endpoints are rate limited. Large lists are bounded and paginated instead of returning unbounded datasets.
+Live ranking should prefer cached activity where correctness permits. Expensive refresh work belongs in background jobs. Public requests are rate limited, result counts are bounded, and account quota checks remain server-side.
 
-## 9. Observability policy
+## 9. Observability
 
-Every request gets a request ID. Logs should be structured and carry safe context. Provider errors, binding failures, and webhook processing failures should be searchable by request ID or provider event ID. User-facing responses stay concise and safe.
+Every request gets a request ID. Logs use structured JSON with safe context. Authentication failures, access-list mutations, service-binding failures, rate limiting, quota rejections, and engine latency should be searchable by request ID and normalized Gmail address only when operationally necessary.
 
-## 10. Delivery policy
+Do not log Google credentials, session tokens, admin secrets, API keys, or complete authentication payloads.
+
+## 10. Delivery
 
 ```text
 git push
-   -> validate
+   -> contract validation
    -> typecheck
-   -> unit/integration checks
-   -> browser smoke checks
-   -> deploy
-   -> service health checks
-   -> live verification
+   -> tests
+   -> deploy engine/auth/gateway
+   -> D1 migration
+   -> production health checks
+   -> release gate
+   -> live Gmail sign-in verification
 ```
 
-A failed validation gate stops deployment. Production smoke checks must exercise the actual binding path, not only compatibility URLs that bypass the dependency.
+The release gate must verify that retired payment routes are gone and the deployed browser contains the Gmail access model.
 
-## 11. Provider adapter rule
+## 11. Scope discipline
 
-Provider integrations should sit behind small interfaces so a provider can be changed without rewriting the application. The first concrete adapter is Razorpay for billing and GitHub for repository data.
+The current critical path is:
 
-## 12. AI delivery model
+`Open site -> Gmail sign-in -> Free/Pro authorization -> live scan -> results`
 
-The repository root `CLAUDE.md` is the permanent rule set. Project decisions that would otherwise be forgotten go into `docs/`. Repeated procedures belong in reusable skills under `skills/` once the directory is established.
-
-## 13. Scope discipline
-
-Do not add broad features until the core flow is reliable:
-
-`Google sign-in -> query -> results -> checkout -> authorization -> webhook -> Pro entitlement`.
-
-That vertical slice is the product's first reliability boundary.
+Do not reintroduce payment-provider complexity unless a new product decision explicitly requires paid checkout.
